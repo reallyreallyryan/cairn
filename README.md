@@ -14,7 +14,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
 
 - **4-Tier Model Routing with Budget Caps** — YAML-driven rules route tasks to the cheapest capable model (Qwen 3 8B → Qwen 3 32B → Claude Sonnet → Claude Extended). Daily spend tracking auto-downgrades to local models when you hit your budget. No LiteLLM dependency — just a simple, readable routing config.
 
-- **Daily Research Digest Pipeline** — A recurring daemon task scrapes configurable news sources, summarizes with a local 32B model, scores relevance against your projects, and queues items for human review. Approved items become permanent memories. Runs for ~$0.03/month.
+- **Daily Research Digest Pipeline** — A recurring daemon task scrapes configurable news sources, pre-filters items by embedding similarity against your SCMS project memories, then summarizes with a local 32B model. Per-source similarity thresholds are configurable. Approved items become permanent memories, improving future filtering — a feedback loop. Runs for ~$0.03/month.
 
 - **MCP Server with OAuth 2.1** — Your agent's memory and task queue are accessible from claude.ai, Claude Desktop, Claude Code, and mobile via a Railway-deployed MCP server with full OAuth 2.1 (DCR + PKCE). One of the few Python FastMCP + OAuth reference implementations available.
 
@@ -72,7 +72,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) package manager
 - [Ollama](https://ollama.ai/) for local LLM inference
-- [Docker](https://www.docker.com/) (optional, for sandboxed code execution)
+- [Docker](https://www.docker.com/) (recommended for code execution; restricted subprocess fallback available with `--allow-subprocess`)
 - A [Supabase](https://supabase.com/) project (free tier works)
 
 ### Setup
@@ -154,7 +154,12 @@ cairn was built incrementally across 6 sprints. Each sprint added a distinct cap
 ├── agent/                # LangGraph agent
 │   ├── graph.py          # StateGraph: classify → plan → act → reflect
 │   ├── classifier.py     # Keyword-based task classification (no LLM call)
-│   ├── nodes.py          # Node implementations
+│   ├── classify.py       # CLASSIFY node: task type, project detection, SCMS context
+│   ├── plan.py           # PLAN node: LLM plan generation, step parsing
+│   ├── act.py            # ACT node: tool execution, fallback dispatch
+│   ├── reflect.py        # REFLECT node: result evaluation, continuation logic
+│   ├── utils.py          # Shared utilities: get_llm(), clean_output()
+│   ├── nodes.py          # Re-exports from split modules (backward compat)
 │   ├── state.py          # AgentState TypedDict
 │   ├── model_router.py   # Complexity → tier → budget check → LLM instance
 │   ├── daemon.py         # Background task queue processor
@@ -203,9 +208,9 @@ Tests use mocked SCMS client — no Supabase or Docker required to run them.
 
 Key choices and their tradeoffs:
 
-- **Keyword classifier over LLM classifier** — Task classification uses deterministic keyword matching, not an LLM call. Faster, cheaper, predictable. Falls back to "research" with all tools for ambiguous tasks.
+- **Keyword classifier over LLM classifier** — Task classification uses deterministic keyword matching, not an LLM call. Faster, cheaper, predictable. Falls back to "research" with research-focused tools for ambiguous tasks.
 - **Supabase over SQLite** — pgvector for semantic search, cloud-accessible from MCP server, single source of truth. Requires network connectivity but enables the entire cloud access story.
-- **Flat cost estimates over token tracking** — Simple $0/$0.01/$0.03 per-call tiers rather than token-level metering. Sufficient for budget guardrails. Token-level tracking deferred to future work.
+- **Flat cost estimates over token tracking** — Simple $0/$0.01/$0.03 per-call tiers rather than token-level metering. Sufficient for cost tracking. Token-level tracking deferred to future work.
 - **Human approval for agent-created tools** — The metatool pipeline requires explicit CLI approval. No auto-promotion, ever. This is a deliberate safety decision.
 - **Local-first model routing** — Default tier is local (free). Cloud models only used when routing rules determine the task needs them. Budget exhaustion auto-downgrades to local.
 
@@ -226,7 +231,7 @@ The daily digest pipeline runs almost entirely on local models. The only cloud c
 
 ## Roadmap
 
-- [ ] Improve digest relevance scoring (few-shot calibration from approval/rejection history)
+- [ ] Improve digest relevance scoring (embedding pre-filter done; few-shot calibration from approval/rejection history is next)
 - [ ] Text-to-speech morning briefing from digest output
 - [ ] 24/7 daemon deployment on Railway
 - [ ] Evaluation pipeline using digest approval/rejection data

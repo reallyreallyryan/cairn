@@ -23,6 +23,7 @@ sources:
     relevance_projects: [cairn, Research]
     max_items: 10
     filter_keywords: [AI, LLM, agent, MCP, RAG, vector]
+    similarity_threshold: 0.35  # broad source, higher bar
 
   - name: arXiv cs.AI
     type: arxiv
@@ -30,6 +31,7 @@ sources:
     frequency: daily
     relevance_projects: [cairn, Research]
     max_items: 5
+    similarity_threshold: 0.25  # already agent-focused by query, lower bar
 
   - name: Nvidia AI Blog
     url: https://blogs.nvidia.com/blog/category/deep-learning/
@@ -46,5 +48,6 @@ sources:
 settings:
   digest_notes_dir: ~/Documents/cairn/digests
   relevance_threshold: 0.6
+  similarity_threshold: 0.3  # global default for embedding pre-filter
   summary_model: local
   review_mode: cli

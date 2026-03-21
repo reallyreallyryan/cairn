@@ -12,7 +12,12 @@ cairn is a LangGraph-based AI agent with 13 tools, a Supabase/pgvector memory st
 agent/                  # Core agent logic
   graph.py              # LangGraph StateGraph: START → classify → plan → act → reflect → END
   classifier.py         # Deterministic keyword-based task classification (no LLM call)
-  nodes.py              # Node implementations: classify_node, plan_node, act_node, reflect_node
+  classify.py           # CLASSIFY node: task type detection, project detection, SCMS context
+  plan.py               # PLAN node: LLM plan generation, step parsing (parse_plan_steps)
+  act.py                # ACT node: tool execution, FALLBACK_DISPATCH, keyword fallback
+  reflect.py            # REFLECT node: result evaluation, continuation, SCMS decision logging
+  utils.py              # Shared utilities: get_llm(), clean_output()
+  nodes.py              # Re-exports from split modules (backward compat for graph.py)
   state.py              # AgentState TypedDict + PlanStep TypedDict
   model_router.py       # Complexity classification → tier selection → budget check
   daemon.py             # Background task queue processor with signal handling
@@ -27,7 +32,7 @@ agent/                  # Core agent logic
     file_reader.py       # Local file reading (restricted to allowed_directories)
     file_writer.py       # Local file writing (restricted to allowed_directories)
     note_taker.py        # Markdown note creation + SCMS storage
-    code_executor.py     # Docker sandbox execution with subprocess fallback
+    code_executor.py     # Docker sandbox execution (subprocess fallback requires --allow-subprocess)
     scms_tools.py        # scms_search and scms_store wrappers
     metatool.py          # create_tool, test_tool, list_pending_tools
     custom/              # Directory for metatool-generated tool files
@@ -142,22 +147,25 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 ## Known Patterns and Issues
 
-- **LLM narrates tool calls**: Local models sometimes describe what they'd do instead of producing structured tool_call JSON. The `FALLBACK_DISPATCH` in `act_node` handles this by keyword-matching the LLM's text output to dispatch tools.
-- **Keyword fallback in classifier**: Classification is entirely keyword-based (no LLM). If no keywords match, defaults to "research" with all tools available.
-- **Subprocess fallback**: If Docker is unavailable, `code_executor` falls back to subprocess with AST-based safety checks. A warning is logged.
+- **LLM narrates tool calls**: Local models sometimes describe what they'd do instead of producing structured tool_call JSON. The `FALLBACK_DISPATCH` in `agent/act.py` handles this by keyword-matching the LLM's text output to dispatch tools.
+- **Keyword fallback in classifier**: Classification is entirely keyword-based (no LLM). If no keywords match, defaults to "research" with research-focused tools.
+- **Subprocess fallback is opt-in**: `code_executor` falls back to subprocess only when `--allow-subprocess` CLI flag is set or `ALLOW_SUBPROCESS=true` is in `.env`. Without this, Docker unavailability returns an error. The subprocess fallback uses AST-based safety checks but these are bypassable — Docker is the primary security boundary.
 - **Redundancy detection**: `reflect_node` stops the loop if the same tool is called 3+ times or the same result appears twice.
+- **Review-digest loops through approved items**: `--review-digest` may cycle through already-approved articles on repeat. The `_handle_review_digest()` in `main.py` calls `update_task_status(id, "completed")` on approval, but `get_pending_tasks()` may still return these items if the status update doesn't propagate correctly or there's a race with the query filter. Known bug — needs investigation.
 
 ## Digest Pipeline
 
 `agent/digest.py` is a standalone orchestrator that chains existing tools to produce a daily research digest. It does NOT use the LangGraph graph — it calls tools and LLMs directly.
 
-**Flow**: `run_digest(frequency)` → load sources from `config/digest_sources.yaml` → for each source, fetch via `url_reader` or `arxiv_search` → LLM (local 32B) extracts items and scores relevance → build markdown digest → save to `~/Documents/cairn/digests/` → queue high-relevance items in task_queue (project=`_digest_review`) for human review → macOS notification.
+**Flow**: `run_digest(frequency)` → load sources from `config/digest_sources.yaml` → for each source, fetch via `url_reader` or `arxiv_search` → LLM (local 32B) extracts items → **embedding pre-filter** compares each item against SCMS project memories via `get_embeddings_batch()` + `search_memories_by_embedding()`, filters items below per-source `similarity_threshold` → LLM scores only items that passed pre-filter → build markdown digest → save to `~/Documents/cairn/digests/` → queue high-relevance items in task_queue (project=`_digest_review`) with both relevance and embedding scores for human review → macOS notification.
+
+**Embedding Pre-Filter**: Each item's title+summary is embedded and compared against memories in the source's `relevance_projects`. The max cosine similarity across all projects determines if the item passes. Cold start bypass: if SCMS has no memories for target projects, all items pass through. Per-source `similarity_threshold` in `digest_sources.yaml` overrides the global default (0.3). As the user stores more memories, filtering automatically improves — a feedback loop.
 
 **CLI**: `--digest` (run manually), `--review-digest` (approve/reject items into SCMS), `--digest-status` (show recent runs).
 
 **Daemon**: Tasks with "digest" keywords bypass the graph and call `run_digest()` directly. Set up via `--queue "Run daily digest" --recurring "0 6 * * *"`.
 
-**Cost**: ~$0/day (local model for summarization, only OpenAI embedding calls for approved items).
+**Cost**: ~$0/day (local model for summarization, ~$0.001/day for embedding pre-filter via OpenAI `text-embedding-3-small`).
 
 ## Config System
 
@@ -201,7 +209,15 @@ LangGraph + LangChain ecosystem for agent orchestration. Supabase for persistenc
 
 ```bash
 uv run pytest                              # Run all tests
-uv run pytest tests/test_metatool_loading.py -v  # Run specific test
+uv run pytest tests/test_classifier.py -v  # Run specific test
 ```
+
+Test files:
+- `tests/test_classifier.py` — classify_task keyword matching + detect_project fuzzy matching
+- `tests/test_plan_parser.py` — parse_plan_steps: numbered steps, action filtering, caps, early exit
+- `tests/test_model_router.py` — classify_complexity routing rules + route_and_get_llm override/budget
+- `tests/test_mcp_server.py` — MCP tool functions with mocked SCMSClient
+- `tests/test_graph_integration.py` — Full classify→plan→act→reflect loop through build_graph()
+- `tests/test_metatool_loading.py` — Custom tool @tool decorator wrapping on load
 
 Tests use mocked SCMS client — no Supabase, Docker, or API keys needed. Dev dependencies: `uv sync --group dev`.

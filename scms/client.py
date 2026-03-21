@@ -101,6 +101,34 @@ class SCMSClient:
         logger.info("Found %d memories", len(result.data))
         return result.data
 
+    def search_memories_by_embedding(
+        self,
+        embedding: list[float],
+        limit: int = 5,
+        threshold: float = 0.0,
+        project_id: str | None = None,
+        memory_type: str | None = None,
+    ) -> list[dict]:
+        """Semantic search using a pre-computed embedding vector.
+
+        Like search_memories(), but accepts an embedding directly instead of
+        generating one from text. Also accepts a project UUID directly instead
+        of a project name. Useful for batch operations where embeddings and
+        project IDs are resolved up front.
+        """
+        params: dict[str, Any] = {
+            "query_embedding": embedding,
+            "match_threshold": threshold,
+            "match_count": limit,
+        }
+        if project_id:
+            params["filter_project_id"] = project_id
+        if memory_type:
+            params["filter_memory_type"] = memory_type
+
+        result = self._client.rpc("match_memories", params).execute()
+        return result.data
+
     def update_memory(self, memory_id: str, **updates: Any) -> dict:
         """Update fields on an existing memory."""
         # Re-generate embedding if content changed
