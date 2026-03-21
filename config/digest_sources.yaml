@@ -1,0 +1,50 @@
+sources:
+  - name: Anthropic Blog
+    url: https://www.anthropic.com/news
+    frequency: daily
+    relevance_projects: [cairn, Research]
+    max_items: 5
+
+  - name: LangChain Blog
+    url: https://blog.langchain.dev
+    frequency: daily
+    relevance_projects: [cairn, Research]
+    max_items: 5
+
+  - name: HuggingFace Blog
+    url: https://huggingface.co/blog
+    frequency: daily
+    relevance_projects: [cairn, Research]
+    max_items: 3
+
+  - name: Hacker News Top
+    url: https://news.ycombinator.com
+    frequency: daily
+    relevance_projects: [cairn, Research]
+    max_items: 10
+    filter_keywords: [AI, LLM, agent, MCP, RAG, vector]
+
+  - name: arXiv cs.AI
+    type: arxiv
+    query: "agentic AI OR tool use OR LLM agents"
+    frequency: daily
+    relevance_projects: [cairn, Research]
+    max_items: 5
+
+  - name: Nvidia AI Blog
+    url: https://blogs.nvidia.com/blog/category/deep-learning/
+    frequency: weekly
+    relevance_projects: [Research]
+    max_items: 3
+
+  - name: Google AI Blog
+    url: https://blog.google/technology/ai/
+    frequency: weekly
+    relevance_projects: [Research]
+    max_items: 3
+
+settings:
+  digest_notes_dir: ~/Documents/cairn/digests
+  relevance_threshold: 0.6
+  summary_model: local
+  review_mode: cli

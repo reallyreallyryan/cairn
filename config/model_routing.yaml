@@ -1,0 +1,69 @@
+tiers:
+  local_light:
+    model: "local_light"
+    description: "Ollama Qwen 3 8B — fast, simple tasks"
+    cost_per_call: 0.0
+
+  local:
+    model: "local"
+    description: "Ollama Qwen 3 32B — capable local model"
+    cost_per_call: 0.0
+
+  cloud_standard:
+    model: "cloud"
+    description: "Claude Sonnet — balanced cost/quality"
+    cost_per_call: 0.01
+
+  cloud_advanced:
+    model: "cloud"
+    description: "Claude Sonnet extended context"
+    cost_per_call: 0.03
+
+# Rules checked in order, first match wins
+rules:
+  - name: "simple_recall"
+    match:
+      task_types: ["knowledge_management"]
+      keywords: ["list projects", "what do I know", "recall", "show memories"]
+    tier: "local_light"
+
+  - name: "simple_notes"
+    match:
+      task_types: ["productivity"]
+      keywords: ["take note", "create note", "jot down"]
+    tier: "local_light"
+
+  - name: "summarization"
+    match:
+      task_types: ["research", "productivity"]
+      keywords: ["summarize", "digest", "recap", "brief"]
+    tier: "local"
+
+  - name: "research"
+    match:
+      task_types: ["research"]
+    tier: "cloud_standard"
+
+  - name: "multi_step"
+    match:
+      task_types: ["multi"]
+    tier: "cloud_standard"
+
+  - name: "metatool"
+    match:
+      task_types: ["metatool"]
+    tier: "cloud_standard"
+
+  - name: "complex_technical"
+    match:
+      task_types: ["technical"]
+      keywords: ["debug", "architect", "design", "refactor"]
+    tier: "cloud_advanced"
+
+default_tier: "local"
+
+fallback:
+  local_light: "local"
+  local: "cloud_standard"
+  cloud_standard: "cloud_advanced"
+  cloud_advanced: null

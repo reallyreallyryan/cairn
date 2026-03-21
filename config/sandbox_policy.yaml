@@ -1,0 +1,26 @@
+sandbox:
+  image: cairn-sandbox
+
+  resource_limits:
+    memory: "256m"
+    cpu_period: 100000
+    cpu_quota: 100000  # 1.0 CPU
+    timeout_seconds: 60
+    max_output_chars: 10000
+
+  network:
+    enabled: false
+    allowlist: []  # e.g., ["pypi.org", "api.github.com"] when enabled
+
+  filesystem:
+    writable_paths:
+      - /sandbox/workspace
+      - /sandbox/output
+      - /tmp
+    read_only_root: true
+
+  approval_triggers:
+    - network_access
+    - tool_promotion
+    - policy_modification
+    - new_dependency_install
