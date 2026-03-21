@@ -140,6 +140,11 @@ def load_approved_custom_tools():
                 spec.loader.exec_module(module)
                 tool_func = getattr(module, func_name)
 
+                # Wrap bare functions with @tool decorator if needed
+                if not hasattr(tool_func, "description"):
+                    from langchain_core.tools import tool as tool_decorator
+                    tool_func = tool_decorator(tool_func)
+
                 categories = config.get("categories", ["technical"])
                 TOOL_REGISTRY[t["name"]] = {
                     "tool": tool_func,
