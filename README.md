@@ -94,6 +94,9 @@ ollama pull qwen3:8b
 # 3. Run the migrations in order: scms/migrations/001_initial.sql through 004b
 # 4. Copy your Project URL + anon key
 
+# Build the Docker sandbox image (required for code execution and metatool testing)
+docker build -t cairn-sandbox -f sandbox/Dockerfile .
+
 # Configure
 cp .env.example .env
 # Edit .env with your Supabase URL, API keys, etc.
@@ -183,8 +186,18 @@ cairn was built incrementally across 6 sprints. Each sprint added a distinct cap
 ├── sandbox/              # Docker sandbox
 │   ├── Dockerfile
 │   └── manager.py        # Container lifecycle, code injection, cleanup
+├── tests/                # Integration tests (pytest)
+│   └── test_metatool_loading.py
 └── main.py               # CLI entry point
 ```
+
+## Testing
+
+```bash
+uv run pytest
+```
+
+Tests use mocked SCMS client — no Supabase or Docker required to run them.
 
 ## Design Decisions
 

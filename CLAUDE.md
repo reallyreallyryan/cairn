@@ -57,6 +57,9 @@ scms/
     004a_embedding_pre_migrate.sql   # Drop old 768-dim HNSW index before dimension change
     004b_embedding_post_migrate.sql  # Alter embedding to vector(1536), rebuild HNSW index, update RPC
 
+tests/
+  test_metatool_loading.py  # Integration test: custom tools get @tool decorator on load
+
 main.py                  # CLI entry point (argparse), initial_state construction, graph invocation
 Dockerfile.mcp           # python:3.12-slim, uv-managed deps, runs mcp_server.server
 Procfile                 # Railway entrypoint: uv run python -m mcp_server.server
@@ -117,7 +120,7 @@ TOOL_REGISTRY = {
 
 `CATEGORY_TOOLS` maps each category to its list of tool callables. The classifier uses `CATEGORY_TOOLS` to select which tools are available for a given task type.
 
-At startup, `load_approved_custom_tools()` dynamically imports approved metatool-generated tools from `agent/tools/custom/` using importlib and adds them to the registry.
+At startup, `load_approved_custom_tools()` dynamically imports approved metatool-generated tools from `agent/tools/custom/` using importlib and adds them to the registry. Bare functions (without `@tool` decorator) are auto-wrapped with `@tool` on load to ensure LangGraph compatibility.
 
 ## How to Add a New Built-in Tool
 
@@ -193,3 +196,12 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 ## Dependencies
 
 LangGraph + LangChain ecosystem for agent orchestration. Supabase for persistence. Docker SDK for sandboxing. FastMCP for MCP server + OAuth. DuckDuckGo, trafilatura, arxiv for data sources. Rich for terminal UI. Croniter for recurring task scheduling.
+
+## Testing
+
+```bash
+uv run pytest                              # Run all tests
+uv run pytest tests/test_metatool_loading.py -v  # Run specific test
+```
+
+Tests use mocked SCMS client — no Supabase, Docker, or API keys needed. Dev dependencies: `uv sync --group dev`.

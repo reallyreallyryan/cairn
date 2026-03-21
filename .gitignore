@@ -30,3 +30,6 @@ wheels/
 # Custom tools (metatool-generated)
 agent/tools/custom/*.py
 !agent/tools/custom/.gitkeep
+
+# Personal docs (not for public repo)
+USER_SUMMARY.md
