@@ -31,7 +31,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
                ▼                              ▼
 ┌──────────────────────────┐    ┌─────────────────────────┐
 │   LangGraph StateGraph    │    │    Daemon (daemon.py)    │
-│                           │    │  APScheduler poll loop   │
+│                           │    │  Polling loop + croniter │
 │  START                    │    │  Recurring cron tasks    │
 │    → CLASSIFY (no LLM)    │    │  Daily digest pipeline   │
 │    → PLAN    (LLM)        │    └─────────────────────────┘
@@ -61,7 +61,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
                ┌──────────────────────────────────────────┐
                │  MCP Server (Railway)                     │
                │  FastMCP + OAuth 2.1 (DCR + PKCE)        │
-               │  10 tools · claude.ai / Desktop / mobile  │
+               │  12 tools · claude.ai / Desktop / mobile  │
                └──────────────────────────────────────────┘
 ```
 
@@ -141,7 +141,7 @@ cairn was built incrementally across 6 sprints. Each sprint added a distinct cap
 | 1 | Foundation | SCMS + pgvector memory, 10 tools, CLI with single task and interactive modes |
 | 2 | Intelligence | Plan→Act→Reflect loop, keyword classifier, multi-step planning, decision logging |
 | 3 | Security | Docker sandbox, metatool system, human approval workflow, dynamic tool loading |
-| 4 | Autonomy | 3-tier model routing, budget tracking, task queue, daemon mode, notifications |
+| 4 | Autonomy | Model routing, budget tracking, task queue, daemon mode, notifications |
 | 5a | Cloud Access | MCP server, OAuth 2.1, Railway deployment, OpenAI embedding migration |
 | 5b | Digest Pipeline | Daily research digest, 4-tier routing (Qwen 3 upgrade), local 32B summarization |
 
@@ -170,7 +170,7 @@ cairn was built incrementally across 6 sprints. Each sprint added a distinct cap
 │       ├── metatool.py
 │       └── custom/       # Agent-created tools (after human approval)
 ├── mcp_server/           # FastMCP server for cloud access
-│   ├── server.py         # 10 MCP tools, OAuth 2.1
+│   ├── server.py         # 12 MCP tools, OAuth 2.1
 │   └── config.py
 ├── config/               # YAML configs
 │   ├── model_routing.yaml
