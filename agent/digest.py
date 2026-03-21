@@ -27,6 +27,7 @@ class DigestItem:
     url: str = ""
     source_name: str = ""
     relevance_score: float = 0.0
+    embedding_score: float = 0.0
 
 
 @dataclass
@@ -35,6 +36,7 @@ class SourceResult:
 
     source_name: str
     items: list[DigestItem] = field(default_factory=list)
+    filtered_items: list[DigestItem] = field(default_factory=list)
     error: str = ""
 
 
@@ -180,7 +182,7 @@ def _extract_items_from_text(
     Sends the raw text to the LLM with a structured JSON prompt.
     Falls back to a single-item summary if JSON parsing fails.
     """
-    from agent.nodes import get_llm
+    from agent.utils import get_llm
 
     name = source.get("name", "Unknown")
     llm = get_llm("local")
@@ -238,7 +240,7 @@ def summarize_and_score(
     if not items:
         return items
 
-    from agent.nodes import get_llm
+    from agent.utils import get_llm
 
     projects = source.get("relevance_projects", [])
     llm = get_llm("local")
@@ -280,6 +282,99 @@ def summarize_and_score(
 
 
 # ---------------------------------------------------------------------------
+# Embedding-based pre-filtering
+# ---------------------------------------------------------------------------
+
+
+def embedding_prefilter(
+    items: list[DigestItem],
+    source: dict,
+    config: dict,
+) -> tuple[list[DigestItem], list[DigestItem]]:
+    """Pre-filter items by embedding similarity against SCMS project memories.
+
+    Embeds each item's title+summary, compares against memories in each
+    relevance_project, and filters items below the similarity threshold.
+    On cold start (no memories), all items pass through.
+
+    Returns (passed_items, filtered_items).
+    """
+    if not items:
+        return [], []
+
+    relevance_projects = source.get("relevance_projects", [])
+    if not relevance_projects:
+        logger.info("No relevance_projects for '%s', skipping pre-filter", source.get("name"))
+        return items, []
+
+    # Per-source threshold overrides global default
+    threshold = source.get(
+        "similarity_threshold",
+        config.get("settings", {}).get("similarity_threshold", 0.3),
+    )
+
+    try:
+        from scms.client import SCMSClient
+        from scms.embeddings import get_embeddings_batch
+
+        client = SCMSClient()
+
+        # Resolve project IDs once up front
+        project_ids = {}
+        for proj_name in relevance_projects:
+            pid = client._resolve_project_id(proj_name)
+            if pid:
+                project_ids[proj_name] = pid
+        if not project_ids:
+            logger.info("No valid projects resolved, skipping pre-filter")
+            return items, []
+
+        # Batch-embed all items in one API call
+        query_texts = [f"{item.title}. {item.summary}" for item in items]
+        embeddings = get_embeddings_batch(query_texts)
+
+        # Score each item against each project's memories
+        passed: list[DigestItem] = []
+        filtered: list[DigestItem] = []
+        any_results_found = False
+
+        for item, emb in zip(items, embeddings):
+            max_similarity = 0.0
+
+            for pid in project_ids.values():
+                results = client.search_memories_by_embedding(
+                    embedding=emb, project_id=pid, limit=1, threshold=0.0,
+                )
+                if results:
+                    any_results_found = True
+                    sim = results[0].get("similarity", 0.0)
+                    max_similarity = max(max_similarity, sim)
+
+            item.embedding_score = max_similarity
+            if max_similarity >= threshold:
+                passed.append(item)
+            else:
+                filtered.append(item)
+
+        # Cold start: if SCMS returned nothing for ANY item, pass everything
+        if not any_results_found:
+            logger.info("SCMS has no memories for target projects — cold start bypass, all items pass")
+            for item in filtered:
+                item.embedding_score = 1.0
+            return items, []
+
+        logger.info(
+            "Embedding pre-filter for '%s': %d/%d passed (threshold=%.2f)",
+            source.get("name"), len(passed), len(items), threshold,
+        )
+        return passed, filtered
+
+    except Exception as e:
+        logger.warning("Embedding pre-filter failed, passing all items: %s", e)
+        return items, []
+
+
+# ---------------------------------------------------------------------------
 # Digest assembly and output
 # ---------------------------------------------------------------------------
 
@@ -317,7 +412,8 @@ def build_digest(all_results: list[SourceResult], config: dict) -> str:
         high_items.sort(key=lambda x: x.relevance_score, reverse=True)
         for item in high_items:
             url_part = f" — [link]({item.url})" if item.url else ""
-            lines.append(f"- **{item.title}** (relevance: {item.relevance_score:.1f}, source: {item.source_name}){url_part}")
+            emb_part = f", similarity: {item.embedding_score:.2f}" if item.embedding_score > 0 else ""
+            lines.append(f"- **{item.title}** (relevance: {item.relevance_score:.1f}{emb_part}, source: {item.source_name}){url_part}")
             lines.append(f"  {item.summary}")
             lines.append("")
     else:
@@ -330,11 +426,25 @@ def build_digest(all_results: list[SourceResult], config: dict) -> str:
     if other_items:
         for item in other_items:
             url_part = f" — [link]({item.url})" if item.url else ""
-            lines.append(f"- **{item.title}** ({item.relevance_score:.1f}, {item.source_name}){url_part}")
+            emb_part = f", similarity: {item.embedding_score:.2f}" if item.embedding_score > 0 else ""
+            lines.append(f"- **{item.title}** ({item.relevance_score:.1f}{emb_part}, {item.source_name}){url_part}")
             lines.append(f"  {item.summary}")
             lines.append("")
     else:
         lines.append("*No other items.*")
+        lines.append("")
+
+    # Filtered items section (below embedding pre-filter threshold)
+    filtered_items: list[DigestItem] = []
+    for result in all_results:
+        filtered_items.extend(result.filtered_items)
+
+    if filtered_items:
+        lines.append("## Filtered (below embedding threshold)")
+        lines.append("")
+        filtered_items.sort(key=lambda x: x.embedding_score, reverse=True)
+        for item in filtered_items:
+            lines.append(f"- ~~{item.title}~~ (similarity: {item.embedding_score:.2f}, source: {item.source_name})")
         lines.append("")
 
     # Errors section
@@ -349,7 +459,8 @@ def build_digest(all_results: list[SourceResult], config: dict) -> str:
     total_items = len(high_items) + len(other_items)
     lines.append("---")
     lines.append(f"*{total_items} items from {len(all_results)} sources. "
-                 f"{len(high_items)} high-relevance, {len(errors)} errors.*")
+                 f"{len(high_items)} high-relevance, {len(filtered_items)} pre-filtered, "
+                 f"{len(errors)} errors.*")
 
     return "\n".join(lines)
 
@@ -386,10 +497,11 @@ def queue_for_review(
             if item.relevance_score >= threshold:
                 # Build a reviewable task description
                 url_part = f"\nURL: {item.url}" if item.url else ""
+                emb_part = f"\nEmbedding: {item.embedding_score:.2f}" if item.embedding_score > 0 else ""
                 task_text = (
                     f"[Digest Review] {item.title}\n"
                     f"Source: {item.source_name}\n"
-                    f"Relevance: {item.relevance_score:.2f}\n"
+                    f"Relevance: {item.relevance_score:.2f}{emb_part}\n"
                     f"Summary: {item.summary}{url_part}"
                 )
                 record = client.enqueue_task(
@@ -432,13 +544,19 @@ def run_digest(frequency: str = "daily") -> dict:
             "sources_processed": 0,
         }
 
-    # 2. Fetch each source
+    # 2. Fetch each source, pre-filter, then score
     all_results: list[SourceResult] = []
     for source in sources:
         result = fetch_source(source)
-        # 3. Summarize and score if we got items
         if result.items and not result.error:
-            result.items = summarize_and_score(result.items, source)
+            # 3a. Embedding pre-filter: remove items not relevant to SCMS memories
+            passed, filtered = embedding_prefilter(result.items, source, config)
+            result.filtered_items = filtered
+            # 3b. LLM scoring on items that passed pre-filter only
+            if passed:
+                result.items = summarize_and_score(passed, source)
+            else:
+                result.items = []
         all_results.append(result)
 
     # 4. Build and save digest markdown
@@ -450,23 +568,25 @@ def run_digest(frequency: str = "daily") -> dict:
 
     # 6. Compute stats
     total_items = sum(len(r.items) for r in all_results)
+    total_filtered = sum(len(r.filtered_items) for r in all_results)
     errors = [f"{r.source_name}: {r.error}" for r in all_results if r.error]
 
     # 7. Notify
     notify(
         "Morning digest ready",
         f"{total_items} items from {len(sources)} sources, "
-        f"{len(queued_ids)} queued for review",
+        f"{total_filtered} pre-filtered, {len(queued_ids)} queued for review",
     )
 
     logger.info(
-        "=== Digest complete: %d items, %d queued, %d errors ===",
-        total_items, len(queued_ids), len(errors),
+        "=== Digest complete: %d items, %d filtered, %d queued, %d errors ===",
+        total_items, total_filtered, len(queued_ids), len(errors),
     )
 
     return {
         "digest_path": str(digest_path),
         "items_found": total_items,
+        "items_filtered": total_filtered,
         "items_queued": len(queued_ids),
         "errors": errors,
         "sources_processed": len(sources),

@@ -70,7 +70,7 @@ def route_and_get_llm(
     Returns:
         Tuple of (llm_instance, tier_name, cost_per_call)
     """
-    from agent.nodes import get_llm
+    from agent.utils import get_llm
 
     config = _load_config()
     tiers = config.get("tiers", {})

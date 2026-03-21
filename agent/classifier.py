@@ -19,8 +19,8 @@ CATEGORY_KEYWORDS = {
         "discover", "github",
     ],
     "knowledge_management": [
-        "save", "store", "remember", "recall", "what do I know",
-        "what have I", "memory", "memories", "knowledge",
+        "save", "store", "remember", "recall", "what do i know",
+        "what have i", "memory", "memories", "knowledge",
     ],
     "productivity": [
         "write file", "create file", "note", "summarize", "organize",
@@ -58,8 +58,8 @@ def classify_task(task: str) -> tuple[str, list[str]]:
     elif len(matched_categories) == 1:
         task_type = matched_categories.pop()
     else:
-        # Default to multi if no keywords match
-        task_type = "multi"
+        # Default to research if no keywords match
+        task_type = "research"
 
     tool_names = get_tool_names_for_category(task_type)
     logger.info("Classified task as '%s' -> %d tools available", task_type, len(tool_names))

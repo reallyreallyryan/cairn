@@ -39,6 +39,7 @@ class Settings(BaseSettings):
 
     # Code execution
     code_execution_timeout: int = 30
+    allow_subprocess: bool = False
 
     # Docker / Sandbox
     docker_host: str = ""  # Auto-detected if empty (Colima, default socket)

@@ -244,6 +244,13 @@ def main():
         help="Start persistent daemon mode",
     )
 
+    # Code execution
+    parser.add_argument(
+        "--allow-subprocess",
+        action="store_true",
+        help="Allow code execution via subprocess when Docker is unavailable (use with caution)",
+    )
+
     # Digest commands
     parser.add_argument(
         "--digest",
@@ -268,7 +275,15 @@ def main():
     if args.debug:
         settings.log_level = "DEBUG"
 
+    if args.allow_subprocess:
+        settings.allow_subprocess = True
+
     setup_logging()
+    logger = logging.getLogger(__name__)
+
+    # Warn if subprocess fallback is enabled via env var (sticky setting)
+    if settings.allow_subprocess and not args.allow_subprocess:
+        logger.warning("Subprocess fallback enabled via ALLOW_SUBPROCESS environment variable")
 
     # Handle tool approval commands
     if args.pending_tools:

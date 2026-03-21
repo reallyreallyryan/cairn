@@ -83,7 +83,7 @@ def _subprocess_fallback(code: str) -> str:
         output = "\n".join(output_parts) if output_parts else "[No output]"
         if len(output) > MAX_OUTPUT_CHARS:
             output = output[:MAX_OUTPUT_CHARS] + f"\n[Truncated]"
-        return f"[subprocess fallback — Docker unavailable]\n{output}"
+        return f"[WARNING: Running outside Docker sandbox — limited safety checks only]\n{output}"
     except subprocess.TimeoutExpired:
         return f"Timed out after {settings.code_execution_timeout}s"
     except Exception as e:
@@ -126,9 +126,14 @@ def code_executor(code: str) -> str:
 
         return output
 
-    except ConnectionError as e:
+    except (ConnectionError, Exception) as e:
+        if not settings.allow_subprocess:
+            logger.warning("Docker unavailable and subprocess fallback is disabled: %s", e)
+            return (
+                "Docker is unavailable and subprocess fallback is disabled.\n"
+                "Either install/start Docker, or use --allow-subprocess "
+                "(CLI flag) or set ALLOW_SUBPROCESS=true (.env) to enable "
+                "restricted subprocess execution."
+            )
         logger.warning("Docker unavailable, falling back to subprocess: %s", e)
-        return _subprocess_fallback(code)
-    except Exception as e:
-        logger.warning("Sandbox error, falling back to subprocess: %s", e)
         return _subprocess_fallback(code)
