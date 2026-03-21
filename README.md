@@ -78,7 +78,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
 ### Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/cairn.git
+git clone https://github.com/reallyreallyryan/cairn.git
 cd cairn
 
 # Install dependencies
