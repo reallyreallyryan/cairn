@@ -24,5 +24,8 @@ dependencies = [
     "fastmcp>=2.0.0",
 ]
 
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
 [project.scripts]
 cairn = "main:main"
