@@ -129,6 +129,84 @@ def list_projects() -> str:
 
 
 @mcp.tool()
+def create_project(
+    name: str,
+    description: str = "",
+    status: str = "active",
+    metadata: dict | None = None,
+) -> str:
+    """Create a new project in the SCMS.
+
+    Args:
+        name: Project name (must be unique).
+        description: What the project is about.
+        status: Initial status — 'active', 'idea', 'paused', or 'completed'.
+        metadata: Optional dict with keys like 'stack', 'goals', etc.
+    """
+    logger.info("MCP create_project: %s", name)
+    try:
+        result = _get_client().create_project(
+            name=name, description=description, status=status, metadata=metadata,
+        )
+        return f"Created project '{result['name']}' (id: {result['id']}, status: {result['status']})"
+    except Exception as e:
+        error_msg = str(e)
+        if "duplicate" in error_msg.lower() or "unique" in error_msg.lower():
+            return f"Error: project '{name}' already exists"
+        logger.error("create_project error: %s", e)
+        return f"Error creating project: {e}"
+
+
+@mcp.tool()
+def update_project(
+    name: str,
+    description: str | None = None,
+    status: str | None = None,
+    metadata: dict | None = None,
+) -> str:
+    """Update an existing project's fields. Only provided fields are changed.
+
+    Args:
+        name: Project name to update.
+        description: New description (or None to keep current).
+        status: New status — 'active', 'idea', 'paused', 'completed', 'archived'.
+        metadata: New metadata dict (replaces existing metadata).
+    """
+    logger.info("MCP update_project: %s", name)
+    try:
+        result = _get_client().update_project(
+            name=name, description=description, status=status, metadata=metadata,
+        )
+        if "error" in result:
+            return result["error"]
+        return f"Updated project '{result['name']}' (status: {result['status']})"
+    except Exception as e:
+        logger.error("update_project error: %s", e)
+        return f"Error updating project: {e}"
+
+
+@mcp.tool()
+def archive_project(name: str) -> str:
+    """Archive (soft-delete) a project. Sets status to 'archived'.
+
+    The project and all linked memories/decisions are preserved but hidden
+    from active views. Reversible via update_project(name, status='active').
+
+    Args:
+        name: Project name to archive.
+    """
+    logger.info("MCP archive_project: %s", name)
+    try:
+        result = _get_client().archive_project(name=name)
+        if "error" in result:
+            return result["error"]
+        return f"Archived project '{result['name']}'"
+    except Exception as e:
+        logger.error("archive_project error: %s", e)
+        return f"Error archiving project: {e}"
+
+
+@mcp.tool()
 def queue_task(task: str, priority: int = 5, project: str | None = None) -> str:
     """Add a task to the cairn agent's task queue."""
     logger.info("MCP queue_task: priority=%d project=%s", priority, project)

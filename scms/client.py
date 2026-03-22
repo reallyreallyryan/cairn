@@ -225,6 +225,57 @@ class SCMSClient:
         result = query.order("name").execute()
         return result.data
 
+    def create_project(
+        self,
+        name: str,
+        description: str = "",
+        status: str = "active",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict:
+        """Create a new project."""
+        logger.info("Creating project: %s", name)
+        record = {
+            "name": name,
+            "description": description,
+            "status": status,
+            "metadata": metadata or {},
+        }
+        result = self._client.table("projects").insert(record).execute()
+        return result.data[0]
+
+    def update_project(
+        self,
+        name: str,
+        description: str | None = None,
+        status: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict:
+        """Update an existing project by name. Only non-None fields are updated."""
+        logger.info("Updating project: %s", name)
+        updates: dict[str, Any] = {}
+        if description is not None:
+            updates["description"] = description
+        if status is not None:
+            updates["status"] = status
+        if metadata is not None:
+            updates["metadata"] = metadata
+        if not updates:
+            return {"error": "No fields to update"}
+        result = (
+            self._client.table("projects")
+            .update(updates)
+            .eq("name", name)
+            .execute()
+        )
+        if not result.data:
+            return {"error": f"Project '{name}' not found"}
+        return result.data[0]
+
+    def archive_project(self, name: str) -> dict:
+        """Soft-delete a project by setting its status to 'archived'."""
+        logger.info("Archiving project: %s", name)
+        return self.update_project(name, status="archived")
+
     # ------------------------------------------------------------------
     # Decision Log
     # ------------------------------------------------------------------

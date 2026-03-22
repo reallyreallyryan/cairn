@@ -42,13 +42,14 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
            │
            ▼
 ┌──────────────────────────────────────────────────────────┐
-│                    Tool Layer (13+ tools)                  │
-│  Data:  web_search, url_reader, arxiv_search,             │
-│         github_search                                     │
-│  Files: file_reader, file_writer, note_taker              │
-│  Code:  code_executor (Docker sandbox)                    │
-│  SCMS:  scms_search, scms_store                           │
-│  Meta:  create_tool, test_tool, list_pending_tools        │
+│                    Tool Layer (16+ tools)                  │
+│  Data:    web_search, url_reader, arxiv_search,           │
+│           github_search                                   │
+│  Files:   file_reader, file_writer, note_taker            │
+│  Code:    code_executor (Docker sandbox)                  │
+│  SCMS:    scms_search, scms_store                         │
+│  Project: create_project, update_project, archive_project │
+│  Meta:    create_tool, test_tool, list_pending_tools      │
 └──────────┬────────────────────────────────────────────────┘
            │
            ▼
@@ -61,7 +62,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
                ┌──────────────────────────────────────────┐
                │  MCP Server (Railway)                     │
                │  FastMCP + OAuth 2.1 (DCR + PKCE)        │
-               │  12 tools · claude.ai / Desktop / mobile  │
+               │  15 tools · claude.ai / Desktop / mobile  │
                └──────────────────────────────────────────┘
 ```
 
@@ -165,7 +166,7 @@ cairn was built incrementally across 6 sprints. Each sprint added a distinct cap
 │   ├── daemon.py         # Background task queue processor
 │   ├── digest.py         # Daily research digest orchestrator
 │   ├── notifications.py  # macOS + file log notifications
-│   └── tools/            # 13+ tools (web, files, code, SCMS, metatool)
+│   └── tools/            # 16+ tools (web, files, code, SCMS, project, metatool)
 │       ├── web_search.py
 │       ├── url_reader.py
 │       ├── arxiv_search.py
@@ -175,10 +176,11 @@ cairn was built incrementally across 6 sprints. Each sprint added a distinct cap
 │       ├── note_taker.py
 │       ├── code_executor.py
 │       ├── scms_tools.py
+│       ├── project_tools.py # create_project, update_project, archive_project
 │       ├── metatool.py
 │       └── custom/       # Agent-created tools (after human approval)
 ├── mcp_server/           # FastMCP server for cloud access
-│   ├── server.py         # 12 MCP tools, OAuth 2.1
+│   ├── server.py         # 15 MCP tools, OAuth 2.1
 │   └── config.py
 ├── config/               # YAML configs
 │   ├── model_routing.yaml
@@ -192,6 +194,7 @@ cairn was built incrementally across 6 sprints. Each sprint added a distinct cap
 │   ├── Dockerfile
 │   └── manager.py        # Container lifecycle, code injection, cleanup
 ├── tests/                # Integration tests (pytest)
+│   ├── test_project_crud.py
 │   └── test_metatool_loading.py
 └── main.py               # CLI entry point
 ```
@@ -212,6 +215,7 @@ Key choices and their tradeoffs:
 - **Supabase over SQLite** — pgvector for semantic search, cloud-accessible from MCP server, single source of truth. Requires network connectivity but enables the entire cloud access story.
 - **Flat cost estimates over token tracking** — Simple $0/$0.01/$0.03 per-call tiers rather than token-level metering. Sufficient for cost tracking. Token-level tracking deferred to future work.
 - **Human approval for agent-created tools** — The metatool pipeline requires explicit CLI approval. No auto-promotion, ever. This is a deliberate safety decision.
+- **Two-stage tool promotion** — Sandbox-built tools go live in the daemon/CLI after human approval (stage 1). Promoting a tool to the MCP server for cloud clients requires Claude Code review and a Railway redeploy (stage 2). No tool reaches claude.ai or Claude Desktop without two gates.
 - **Local-first model routing** — Default tier is local (free). Cloud models only used when routing rules determine the task needs them. Budget exhaustion auto-downgrades to local.
 
 ## Cost

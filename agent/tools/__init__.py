@@ -14,6 +14,11 @@ from agent.tools.arxiv_search import arxiv_search
 from agent.tools.github_search import github_search
 from agent.tools.code_executor import code_executor
 from agent.tools.metatool import create_tool, test_tool, list_pending_tools
+from agent.tools.project_tools import (
+    archive_project,
+    create_project,
+    update_project,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +89,21 @@ TOOL_REGISTRY = {
         "categories": ["metatool"],
         "keywords": ["pending tools", "unapproved tools", "tools awaiting"],
     },
+    "create_project": {
+        "tool": create_project,
+        "categories": ["knowledge_management", "productivity"],
+        "keywords": ["create project", "new project", "start project", "add project"],
+    },
+    "update_project": {
+        "tool": update_project,
+        "categories": ["knowledge_management", "productivity"],
+        "keywords": ["update project", "edit project", "change project", "modify project"],
+    },
+    "archive_project": {
+        "tool": archive_project,
+        "categories": ["knowledge_management", "productivity"],
+        "keywords": ["archive project", "delete project", "remove project", "close project"],
+    },
 }
 
 # Flat list of all tools (backward compat)
@@ -92,8 +112,8 @@ ALL_TOOLS = [entry["tool"] for entry in TOOL_REGISTRY.values()]
 # Category -> tool mapping
 CATEGORY_TOOLS = {
     "research": ["web_search", "arxiv_search", "github_search", "url_reader", "scms_search", "scms_store"],
-    "knowledge_management": ["scms_search", "scms_store", "note_taker", "file_reader", "file_writer"],
-    "productivity": ["file_writer", "file_reader", "note_taker", "url_reader", "scms_store"],
+    "knowledge_management": ["scms_search", "scms_store", "note_taker", "file_reader", "file_writer", "create_project", "update_project", "archive_project"],
+    "productivity": ["file_writer", "file_reader", "note_taker", "url_reader", "scms_store", "create_project", "update_project", "archive_project"],
     "technical": ["code_executor", "file_reader", "file_writer", "web_search", "scms_store", "github_search"],
     "metatool": ["create_tool", "test_tool", "list_pending_tools", "code_executor", "scms_store"],
 }

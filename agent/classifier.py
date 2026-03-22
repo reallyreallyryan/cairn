@@ -21,6 +21,9 @@ CATEGORY_KEYWORDS = {
     "knowledge_management": [
         "save", "store", "remember", "recall", "what do i know",
         "what have i", "memory", "memories", "knowledge",
+        "create project", "new project", "add project",
+        "update project", "edit project", "modify project",
+        "archive project", "delete project", "remove project",
     ],
     "productivity": [
         "write file", "create file", "note", "summarize", "organize",

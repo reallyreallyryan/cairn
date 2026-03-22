@@ -4,7 +4,7 @@ Instructions for AI models working on this codebase.
 
 ## Project Overview
 
-cairn is a LangGraph-based AI agent with 13 tools, a Supabase/pgvector memory store (SCMS), Docker sandbox for code execution, a metatool system for dynamic tool creation, a task queue with daemon mode, an MCP server for cloud access, and a daily research digest pipeline. The agent runs locally via CLI; the MCP server is deployed on Railway.
+cairn is a LangGraph-based AI agent with 16 tools, a Supabase/pgvector memory store (SCMS), Docker sandbox for code execution, a metatool system for dynamic tool creation, a task queue with daemon mode, an MCP server for cloud access, and a daily research digest pipeline. The agent runs locally via CLI; the MCP server is deployed on Railway.
 
 ## Project Structure
 
@@ -34,13 +34,14 @@ agent/                  # Core agent logic
     note_taker.py        # Markdown note creation + SCMS storage
     code_executor.py     # Docker sandbox execution (subprocess fallback requires --allow-subprocess)
     scms_tools.py        # scms_search and scms_store wrappers
+    project_tools.py     # create_project, update_project, archive_project
     metatool.py          # create_tool, test_tool, list_pending_tools
     custom/              # Directory for metatool-generated tool files
 
 mcp_server/
   __init__.py
   config.py              # MCPSettings: mcp_base_url, mcp_host, mcp_port
-  server.py              # FastMCP server: 10 MCP tools, OAuth 2.1 via InMemoryOAuthProvider
+  server.py              # FastMCP server: 15 MCP tools, OAuth 2.1 via InMemoryOAuthProvider
 
 config/
   settings.py            # Pydantic BaseSettings, loads from .env
@@ -63,6 +64,7 @@ scms/
     004b_embedding_post_migrate.sql  # Alter embedding to vector(1536), rebuild HNSW index, update RPC
 
 tests/
+  test_project_crud.py    # SCMSClient CRUD, MCP tool wrappers, classifier routing
   test_metatool_loading.py  # Integration test: custom tools get @tool decorator on load
 
 main.py                  # CLI entry point (argparse), initial_state construction, graph invocation
@@ -151,6 +153,7 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 - **Keyword fallback in classifier**: Classification is entirely keyword-based (no LLM). If no keywords match, defaults to "research" with research-focused tools.
 - **Subprocess fallback is opt-in**: `code_executor` falls back to subprocess only when `--allow-subprocess` CLI flag is set or `ALLOW_SUBPROCESS=true` is in `.env`. Without this, Docker unavailability returns an error. The subprocess fallback uses AST-based safety checks but these are bypassable — Docker is the primary security boundary.
 - **Redundancy detection**: `reflect_node` stops the loop if the same tool is called 3+ times or the same result appears twice.
+- **Two-stage tool promotion (by design)**: Metatool-created tools only go live in the daemon/CLI after human approval (stage 1). To promote a tool to the MCP server for cloud clients (claude.ai, Desktop, mobile), Claude Code adds it as an `@mcp.tool()` in `server.py` and redeploys to Railway (stage 2). This is intentional — no tool reaches cloud clients without two gates.
 - **Review-digest loops through approved items**: `--review-digest` may cycle through already-approved articles on repeat. The `_handle_review_digest()` in `main.py` calls `update_task_status(id, "completed")` on approval, but `get_pending_tasks()` may still return these items if the status update doesn't propagate correctly or there's a race with the query filter. Known bug — needs investigation.
 
 ## Digest Pipeline
@@ -186,10 +189,11 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 ## MCP Server
 
-`mcp_server/server.py` exposes SCMS as 12 tools over Streamable HTTP using FastMCP:
+`mcp_server/server.py` exposes SCMS as 15 tools over Streamable HTTP using FastMCP:
 
 - `scms_search`, `scms_store` — semantic memory search and storage
 - `get_project_context`, `list_projects` — project browsing
+- `create_project`, `update_project`, `archive_project` — project CRUD
 - `queue_task`, `check_queue`, `get_task_result` — task queue management
 - `get_decisions`, `log_decision` — decision log access
 - `agent_status` — queue counts and daily spend
@@ -217,6 +221,7 @@ Test files:
 - `tests/test_plan_parser.py` — parse_plan_steps: numbered steps, action filtering, caps, early exit
 - `tests/test_model_router.py` — classify_complexity routing rules + route_and_get_llm override/budget
 - `tests/test_mcp_server.py` — MCP tool functions with mocked SCMSClient
+- `tests/test_project_crud.py` — SCMSClient CRUD methods, MCP project tools, classifier routing
 - `tests/test_graph_integration.py` — Full classify→plan→act→reflect loop through build_graph()
 - `tests/test_metatool_loading.py` — Custom tool @tool decorator wrapping on load
 
