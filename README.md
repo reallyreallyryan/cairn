@@ -92,7 +92,7 @@ ollama pull qwen3:8b
 # Set up Supabase:
 # 1. Create a project at supabase.com
 # 2. Enable the pgvector extension (Database > Extensions)
-# 3. Run the migrations in order: scms/migrations/001_initial.sql through 004b
+# 3. Run the migrations in order: scms/migrations/001_initial.sql through 005
 # 4. Copy your Project URL + anon key
 
 # Build the Docker sandbox image (required for code execution and metatool testing)
@@ -189,7 +189,7 @@ cairn was built incrementally across 6 sprints. Each sprint added a distinct cap
 ├── scms/                 # Shared Context Memory Store
 │   ├── client.py         # SCMSClient — CRUD + semantic search
 │   ├── embeddings.py     # OpenAI text-embedding-3-small
-│   └── migrations/       # Supabase SQL migrations (001–004b)
+│   └── migrations/       # Supabase SQL migrations (001–005)
 ├── sandbox/              # Docker sandbox
 │   ├── Dockerfile
 │   └── manager.py        # Container lifecycle, code injection, cleanup

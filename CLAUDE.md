@@ -62,6 +62,7 @@ scms/
     003_task_queue.sql   # task_queue table with priority, recurring, cost tracking
     004a_embedding_pre_migrate.sql   # Drop old 768-dim HNSW index before dimension change
     004b_embedding_post_migrate.sql  # Alter embedding to vector(1536), rebuild HNSW index, update RPC
+    005_add_archived_status.sql      # Add 'archived' to projects_status_check constraint
 
 tests/
   test_project_crud.py    # SCMSClient CRUD, MCP tool wrappers, classifier routing
