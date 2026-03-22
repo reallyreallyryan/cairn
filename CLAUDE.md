@@ -204,6 +204,8 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 **Deployment**: Railway via `railway up`. Build uses `Dockerfile.mcp` (python:3.12-slim + uv). Health check at `/health`.
 
+**Annotations**: Tools declare MCP `ToolAnnotations` so clients like claude.ai don't gate calls behind approval prompts. Read-only tools (search, list, status) use `readOnlyHint: True`; write tools (store, create, update, archive, queue, log) use `destructiveHint: False`.
+
 **Clients**: claude.ai (connector), Claude Desktop (mcp-remote), Claude Code (`--transport http`), mobile (via claude.ai).
 
 ## Dependencies

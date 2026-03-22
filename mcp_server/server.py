@@ -36,7 +36,7 @@ def _get_client() -> SCMSClient:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def scms_search(
     query: str,
     limit: int = 5,
@@ -61,7 +61,7 @@ def scms_search(
         return f"Error searching memories: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"destructiveHint": False})
 def scms_store(
     content: str,
     category: str = "learning",
@@ -85,7 +85,7 @@ def scms_store(
         return f"Error storing memory: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def get_project_context(project_name: str) -> str:
     """Get full context for a project: metadata, recent memories, and decisions."""
     logger.info("MCP get_project_context: %s", project_name)
@@ -111,7 +111,7 @@ def get_project_context(project_name: str) -> str:
         return f"Error: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def list_projects() -> str:
     """List all projects in the SCMS."""
     logger.info("MCP list_projects")
@@ -128,7 +128,7 @@ def list_projects() -> str:
         return f"Error: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"destructiveHint": False})
 def create_project(
     name: str,
     description: str = "",
@@ -157,7 +157,7 @@ def create_project(
         return f"Error creating project: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"destructiveHint": False})
 def update_project(
     name: str,
     description: str | None = None,
@@ -185,7 +185,7 @@ def update_project(
         return f"Error updating project: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"destructiveHint": False})
 def archive_project(name: str) -> str:
     """Archive (soft-delete) a project. Sets status to 'archived'.
 
@@ -206,7 +206,7 @@ def archive_project(name: str) -> str:
         return f"Error archiving project: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"destructiveHint": False})
 def queue_task(task: str, priority: int = 5, project: str | None = None) -> str:
     """Add a task to the cairn agent's task queue."""
     logger.info("MCP queue_task: priority=%d project=%s", priority, project)
@@ -218,7 +218,7 @@ def queue_task(task: str, priority: int = 5, project: str | None = None) -> str:
         return f"Error: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def check_queue(status_filter: str | None = None, limit: int = 10) -> str:
     """Check the task queue status and list tasks.
 
@@ -257,7 +257,7 @@ def check_queue(status_filter: str | None = None, limit: int = 10) -> str:
         return f"Error: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def get_task_result(task_id: str) -> str:
     """Get the result of a specific task by ID."""
     logger.info("MCP get_task_result: %s", task_id)
@@ -292,7 +292,7 @@ def get_task_result(task_id: str) -> str:
         return f"Error: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def get_decisions(project: str | None = None, limit: int = 10) -> str:
     """Get recent architectural and design decisions from the decision log."""
     logger.info("MCP get_decisions: project=%s limit=%d", project, limit)
@@ -314,7 +314,7 @@ def get_decisions(project: str | None = None, limit: int = 10) -> str:
         return f"Error: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"destructiveHint": False})
 def log_decision(
     decision: str,
     reasoning: str = "",
@@ -336,7 +336,7 @@ def log_decision(
         return f"Error: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def agent_status() -> str:
     """Get cairn agent status: queue counts and daily spend."""
     logger.info("MCP agent_status")
@@ -361,7 +361,7 @@ def agent_status() -> str:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def review_digest(limit: int = 10) -> str:
     """List pending digest items awaiting human review."""
     logger.info("MCP review_digest: limit=%d", limit)
@@ -380,7 +380,7 @@ def review_digest(limit: int = 10) -> str:
         return f"Error: {e}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True})
 def digest_status() -> str:
     """Get digest pipeline status: recent runs and pending review count."""
     logger.info("MCP digest_status")
