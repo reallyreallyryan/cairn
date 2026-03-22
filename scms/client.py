@@ -32,12 +32,30 @@ class SCMSClient:
         # errors when running behind Railway's reverse proxy.
         pg = self._client.postgrest
         old = pg.session
+        old.close()
         pg.session = httpx.Client(
             base_url=str(old.base_url),
             headers=dict(old.headers),
             timeout=old.timeout,
             follow_redirects=True,
         )
+
+    # ------------------------------------------------------------------
+    # Resource management
+    # ------------------------------------------------------------------
+
+    def close(self):
+        """Close the underlying httpx session to release sockets."""
+        try:
+            self._client.postgrest.session.close()
+        except Exception:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
 
     # ------------------------------------------------------------------
     # Memories
