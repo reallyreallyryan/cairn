@@ -62,7 +62,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
                ┌──────────────────────────────────────────┐
                │  MCP Server (Railway)                     │
                │  FastMCP + OAuth 2.1 (DCR + PKCE)        │
-               │  15 tools · claude.ai / Desktop / mobile  │
+               │  16 tools · claude.ai / Desktop / mobile  │
                └──────────────────────────────────────────┘
 ```
 
@@ -125,6 +125,7 @@ python main.py --model cloud "Architect a REST API for task management"
 python main.py --digest              # Run manually
 python main.py --review-digest       # Review & approve/reject items into memory
 python main.py --digest-status       # Check last run stats
+python main.py --digest-eval         # Run evaluation report on approval/rejection history
 
 # Task queue & daemon
 python main.py --queue "Research MCP best practices" --priority 2
@@ -150,6 +151,7 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 | 5b | Digest Pipeline | Daily research digest, 4-tier routing (Qwen 3 upgrade), local 32B summarization |
 | 5c | Hardening | Classifier default fix (multi→research), `archived` DB status, MCP ToolAnnotations, httpx session fix, ddgs migration |
 | 6 | Digest Relevance | Embedding-based pre-filter for digest pipeline, per-source similarity thresholds, cold-start bypass |
+| 7 | Digest Hardening | Few-shot calibration from approval history, digest dedup on ingest, evaluation pipeline with threshold analysis, digest sources expanded to 16, digest_eval MCP tool |
 
 ## Project Structure
 
@@ -167,6 +169,7 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 │   ├── model_router.py   # Complexity → tier → budget check → LLM instance
 │   ├── daemon.py         # Background task queue processor
 │   ├── digest.py         # Daily research digest orchestrator
+│   ├── evaluation.py     # Digest evaluation: metrics, thresholds, reports
 │   ├── notifications.py  # macOS + file log notifications
 │   └── tools/            # 16+ tools (web, files, code, SCMS, project, metatool)
 │       ├── web_search.py
@@ -182,7 +185,7 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 │       ├── metatool.py
 │       └── custom/       # Agent-created tools (after human approval)
 ├── mcp_server/           # FastMCP server for cloud access
-│   ├── server.py         # 15 MCP tools, OAuth 2.1
+│   ├── server.py         # 16 MCP tools, OAuth 2.1
 │   └── config.py
 ├── config/               # YAML configs
 │   ├── model_routing.yaml
@@ -197,7 +200,10 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 │   └── manager.py        # Container lifecycle, code injection, cleanup
 ├── tests/                # Integration tests (pytest)
 │   ├── test_project_crud.py
-│   └── test_metatool_loading.py
+│   ├── test_metatool_loading.py
+│   ├── test_digest_dedup.py
+│   ├── test_digest_fewshot.py
+│   └── test_evaluation.py
 └── main.py               # CLI entry point
 ```
 
