@@ -494,9 +494,13 @@ def build_eval_report(metrics: EvalMetrics, suggestions: list[str]) -> str:
     return "\n".join(lines)
 
 
-def save_eval_report(markdown: str) -> Path:
+def save_eval_report(markdown: str, config: dict | None = None) -> Path:
     """Save the evaluation report to the digests directory."""
-    digest_dir = Path(settings.digest_notes_dir).expanduser()
+    digest_dir = Path(
+        (config or {}).get("settings", {}).get(
+            "digest_notes_dir", "~/Documents/cairn/digests"
+        )
+    ).expanduser()
     digest_dir.mkdir(parents=True, exist_ok=True)
 
     filename = f"{date.today().isoformat()}_eval_report.md"
@@ -543,7 +547,7 @@ def run_evaluation() -> dict:
 
     suggestions = suggest_thresholds(metrics, config)
     report = build_eval_report(metrics, suggestions)
-    report_path = save_eval_report(report)
+    report_path = save_eval_report(report, config)
 
     logger.info(
         "=== Evaluation complete: %d items, %.1f%% approval rate ===",
