@@ -71,8 +71,10 @@ tests/
   test_digest_dedup.py    # Digest queue dedup, extract helpers, cancelled completed_at fix
   test_digest_fewshot.py  # Few-shot calibration from approval/rejection history
   test_evaluation.py      # Digest eval pipeline: parsing, metrics, bucketing, report
+  test_rerank.py          # Cross-encoder reranking: scoring, graceful degradation
 
 main.py                  # CLI entry point (argparse), initial_state construction, graph invocation
+.pre-commit-config.yaml  # gitleaks secret scanning on every commit
 Dockerfile.mcp           # python:3.12-slim, uv-managed deps, runs mcp_server.server
 Procfile                 # Railway entrypoint: uv run python -m mcp_server.server
 railway.toml             # Railway build config: Dockerfile.mcp, health check
