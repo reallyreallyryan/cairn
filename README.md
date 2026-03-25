@@ -2,7 +2,7 @@
 
 A self-extending AI agent with persistent memory, sandboxed tool creation, budget-aware model routing, and cloud access via MCP.
 
-Built with LangGraph, Supabase/pgvector, Docker, and FastMCP. Developed across 6 disciplined sprints, each adding a distinct capability layer.
+Built with LangGraph, Supabase/pgvector, Docker, and FastMCP. Developed across 8 disciplined sprints, each adding a distinct capability layer.
 
 ---
 
@@ -102,7 +102,7 @@ docker build -t cairn-sandbox -f sandbox/Dockerfile .
 cp .env.example .env
 # Edit .env with your Supabase URL, API keys, etc.
 
-# Start Ollama
+# Start Ollama (auto-started by cairn if needed, or start manually)
 ollama serve
 
 # Run your first task
@@ -138,7 +138,7 @@ python main.py --approve-tool <id>   # Approve for production use
 
 ## Sprint History
 
-cairn was built incrementally across 6 sprints. Each sprint added a distinct capability layer, and each sprint brief was handed to Claude Code for implementation.
+cairn was built incrementally across 8 sprints. Each sprint added a distinct capability layer, and each sprint brief was handed to Claude Code for implementation.
 
 | Sprint | Focus | What Was Added |
 |--------|-------|----------------|
@@ -148,6 +148,8 @@ cairn was built incrementally across 6 sprints. Each sprint added a distinct cap
 | 4 | Autonomy | Model routing, budget tracking, task queue, daemon mode, notifications |
 | 5a | Cloud Access | MCP server, OAuth 2.1, Railway deployment, OpenAI embedding migration |
 | 5b | Digest Pipeline | Daily research digest, 4-tier routing (Qwen 3 upgrade), local 32B summarization |
+| 5c | Hardening | Classifier default fix (multi→research), `archived` DB status, MCP ToolAnnotations, httpx session fix, ddgs migration |
+| 6 | Digest Relevance | Embedding-based pre-filter for digest pipeline, per-source similarity thresholds, cold-start bypass |
 
 ## Project Structure
 
@@ -235,12 +237,12 @@ The daily digest pipeline runs almost entirely on local models. The only cloud c
 
 ## Roadmap
 
-- [ ] Improve digest relevance scoring (embedding pre-filter done; few-shot calibration from approval/rejection history is next)
-- [ ] Text-to-speech morning briefing from digest output
-- [ ] 24/7 daemon deployment on Railway
-- [ ] Evaluation pipeline using digest approval/rejection data
+- [x] Improve digest relevance scoring (embedding pre-filter + few-shot calibration from approval/rejection history)
+- [x] Evaluation pipeline using digest approval/rejection data
 - [ ] Memory deduplication and aging
+- [ ] 24/7 daemon deployment on Railway
 - [ ] Multi-agent collaboration patterns
+
 
 ## Related Projects
 

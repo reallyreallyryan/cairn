@@ -230,12 +230,52 @@ def _extract_items_from_text(
     )]
 
 
+def _build_few_shot_context() -> str:
+    """Build few-shot examples from digest approval/rejection history.
+
+    Returns a prompt fragment with labeled examples of approved and rejected
+    items, or an empty string if fewer than 3 approved items exist.
+    """
+    from scms.client import SCMSClient
+
+    try:
+        client = SCMSClient()
+        reviewed = client.get_reviewed_digest_items(limit=30)
+    except Exception as e:
+        logger.debug("Could not fetch review history for few-shot: %s", e)
+        return ""
+
+    approved = [r for r in reviewed if r["status"] == "completed"][:8]
+    rejected = [r for r in reviewed if r["status"] == "cancelled"][:5]
+
+    if len(approved) < 3:
+        return ""
+
+    lines = ["Here are examples of items the user previously reviewed:\n"]
+    lines.append("APPROVED (user found relevant):")
+    for item in approved:
+        title = _extract_title(item["task"])
+        if title:
+            lines.append(f'- "{title}"')
+
+    if rejected:
+        lines.append("\nREJECTED (user found irrelevant):")
+        for item in rejected:
+            title = _extract_title(item["task"])
+            if title:
+                lines.append(f'- "{title}"')
+
+    lines.append("\nUse these preferences to calibrate your scoring.\n")
+    return "\n".join(lines)
+
+
 def summarize_and_score(
     items: list[DigestItem], source: dict
 ) -> list[DigestItem]:
     """Use local 32B model to assign relevance scores to digest items.
 
     Scores are 0.0–1.0 based on relevance to the user's active projects.
+    Includes few-shot examples from approval/rejection history when available.
     """
     if not items:
         return items
@@ -250,10 +290,12 @@ def summarize_and_score(
         for i, item in enumerate(items)
     )
 
+    few_shot = _build_few_shot_context()
     prompt = (
         "Score the relevance of these items for someone building AI agents, "
         "working on personal productivity tools, and tracking AI industry news. "
         f"Active projects: {', '.join(projects)}.\n\n"
+        f"{few_shot}"
         f"Items:\n{items_text}\n\n"
         "Return ONLY a JSON array of numbers (0.0 to 1.0), one per item. "
         "No markdown fences, no commentary. Example: [0.8, 0.3, 0.9]"
@@ -482,19 +524,52 @@ def save_digest(markdown: str, config: dict) -> Path:
     return filepath
 
 
+def _extract_title(task_text: str) -> str:
+    """Extract title from a [Digest Review] task text."""
+    match = re.search(r"\[Digest Review\]\s*(.+)", task_text)
+    return match.group(1).strip() if match else ""
+
+
+def _extract_url(task_text: str) -> str:
+    """Extract URL from a [Digest Review] task text."""
+    match = re.search(r"URL:\s*(\S+)", task_text)
+    return match.group(1).strip() if match else ""
+
+
 def queue_for_review(
     all_results: list[SourceResult], config: dict
 ) -> list[str]:
-    """Store high-relevance items in task_queue for human review."""
+    """Store high-relevance items in task_queue for human review.
+
+    Deduplicates against existing queue items by URL (primary) then
+    title (fallback) to prevent reviewed items from reappearing.
+    """
     from scms.client import SCMSClient
 
     threshold = config.get("settings", {}).get("relevance_threshold", 0.6)
     client = SCMSClient()
     task_ids: list[str] = []
 
+    # Fetch existing digest review items (any status) for dedup
+    existing = client.get_digest_review_items()
+    existing_urls = {
+        _extract_url(t["task"]) for t in existing if _extract_url(t["task"])
+    }
+    existing_titles = {
+        _extract_title(t["task"]) for t in existing if _extract_title(t["task"])
+    }
+
     for result in all_results:
         for item in result.items:
             if item.relevance_score >= threshold:
+                # Skip items already in the queue (by URL or title)
+                if item.url and item.url in existing_urls:
+                    logger.debug("Skipping duplicate (URL): %s", item.title)
+                    continue
+                if item.title and item.title in existing_titles:
+                    logger.debug("Skipping duplicate (title): %s", item.title)
+                    continue
+
                 # Build a reviewable task description
                 url_part = f"\nURL: {item.url}" if item.url else ""
                 emb_part = f"\nEmbedding: {item.embedding_score:.2f}" if item.embedding_score > 0 else ""
@@ -510,6 +585,12 @@ def queue_for_review(
                     project="_digest_review",
                 )
                 task_ids.append(record["id"])
+
+                # Track newly inserted items for intra-batch dedup
+                if item.url:
+                    existing_urls.add(item.url)
+                if item.title:
+                    existing_titles.add(item.title)
 
     logger.info("Queued %d items for review", len(task_ids))
     return task_ids

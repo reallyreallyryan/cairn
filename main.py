@@ -27,20 +27,41 @@ def setup_logging():
 
 
 def check_services():
-    """Check that required services are reachable."""
+    """Check that required services are reachable, auto-starting Ollama if needed."""
     import httpx
+    import subprocess
+    import time
 
-    # Check Ollama
-    if settings.agent_model == "local":
+    # Check Ollama — always needed (digest pipeline uses local model directly)
+    ollama_ok = False
+    try:
+        r = httpx.get(f"{settings.ollama_base_url}/api/tags", timeout=3.0)
+        r.raise_for_status()
+        ollama_ok = True
+    except Exception:
+        # Try to start Ollama automatically
+        console.print("[yellow]Ollama not running — starting it...[/yellow]")
         try:
+            subprocess.Popen(
+                ["ollama", "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            time.sleep(3)
+            # Retry health check
             r = httpx.get(f"{settings.ollama_base_url}/api/tags", timeout=3.0)
             r.raise_for_status()
-            console.print("[green]Ollama[/green] connected", style="dim")
+            ollama_ok = True
         except Exception:
-            console.print(
-                "[yellow]Warning:[/yellow] Cannot reach Ollama at "
-                f"{settings.ollama_base_url}. Run: [bold]ollama serve[/bold]",
-            )
+            pass
+
+    if ollama_ok:
+        console.print("[green]Ollama[/green] connected", style="dim")
+    else:
+        console.print(
+            "[yellow]Warning:[/yellow] Cannot reach Ollama at "
+            f"{settings.ollama_base_url}. Run: [bold]ollama serve[/bold]",
+        )
 
     # Check Supabase
     if settings.supabase_url:
@@ -269,6 +290,11 @@ def main():
         action="store_true",
         help="Show digest pipeline status and recent runs",
     )
+    parser.add_argument(
+        "--digest-eval",
+        action="store_true",
+        help="Run evaluation on digest approval/rejection history",
+    )
 
     args = parser.parse_args()
 
@@ -324,6 +350,9 @@ def main():
         return
     if args.digest_status:
         _handle_digest_status()
+        return
+    if args.digest_eval:
+        _handle_digest_eval()
         return
 
     check_services()
@@ -623,6 +652,31 @@ def _handle_digest_status():
     pending = client.get_pending_tasks(limit=50)
     review_count = sum(1 for t in pending if t.get("project") == "_digest_review")
     console.print(f"\n[bold]Pending review items:[/bold] {review_count}")
+
+
+def _handle_digest_eval():
+    from agent.evaluation import run_evaluation
+
+    console.print("[bold green]Running digest evaluation...[/bold green]")
+    result = run_evaluation()
+
+    if result["total_reviewed"] == 0:
+        console.print("[dim]No reviewed digest items found. "
+                      "Approve or reject some items first.[/dim]")
+        return
+
+    console.print(Panel(
+        f"Total reviewed: {result['total_reviewed']}\n"
+        f"Approval rate: {result['approval_rate']:.1%}\n"
+        f"Report saved to: {result['report_path']}",
+        title="Digest Evaluation",
+        border_style="green",
+    ))
+
+    if result["suggestions"]:
+        console.print("\n[bold]Recommendations:[/bold]")
+        for s in result["suggestions"]:
+            console.print(f"  [dim]-[/dim] {s}")
 
 
 if __name__ == "__main__":

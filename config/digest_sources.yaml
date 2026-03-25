@@ -25,6 +25,38 @@ sources:
     filter_keywords: [AI, LLM, agent, MCP, RAG, vector]
     similarity_threshold: 0.35  # broad source, higher bar
 
+  - name: OpenAI Blog
+    url: https://openai.com/news/
+    frequency: daily
+    relevance_projects: [cairn, Research]
+    max_items: 5
+
+  - name: Meta AI Blog
+    url: https://ai.meta.com/blog/
+    frequency: daily
+    relevance_projects: [cairn, Research]
+    max_items: 3
+
+  - name: Mistral AI Blog
+    url: https://mistral.ai/news/
+    frequency: daily
+    relevance_projects: [cairn, Research]
+    max_items: 3
+
+  - name: Simon Willison
+    url: https://simonwillison.net/
+    frequency: daily
+    relevance_projects: [cairn, Research]
+    max_items: 5
+    filter_keywords: [LLM, AI, agent, Claude, MCP, RAG, tool, embedding]
+    similarity_threshold: 0.35  # broad source, higher bar
+
+  - name: The Gradient
+    url: https://thegradient.pub/
+    frequency: daily
+    relevance_projects: [Research]
+    max_items: 3
+
   - name: arXiv cs.AI
     type: arxiv
     query: "agentic AI OR tool use OR LLM agents"
@@ -32,6 +64,14 @@ sources:
     relevance_projects: [cairn, Research]
     max_items: 5
     similarity_threshold: 0.25  # already agent-focused by query, lower bar
+
+  - name: arXiv cs.CL
+    type: arxiv
+    query: "retrieval augmented generation OR vector search OR semantic memory"
+    frequency: daily
+    relevance_projects: [cairn, Research]
+    max_items: 5
+    similarity_threshold: 0.25  # query-focused, lower bar
 
   - name: Nvidia AI Blog
     url: https://blogs.nvidia.com/blog/category/deep-learning/
@@ -41,6 +81,24 @@ sources:
 
   - name: Google AI Blog
     url: https://blog.google/technology/ai/
+    frequency: weekly
+    relevance_projects: [Research]
+    max_items: 3
+
+  - name: DeepMind Blog
+    url: https://deepmind.google/discover/blog/
+    frequency: weekly
+    relevance_projects: [Research]
+    max_items: 3
+
+  - name: GitHub Blog AI
+    url: https://github.blog/category/ai-ml/
+    frequency: weekly
+    relevance_projects: [cairn, Research]
+    max_items: 3
+
+  - name: Weights & Biases
+    url: https://wandb.ai/site/articles
     frequency: weekly
     relevance_projects: [Research]
     max_items: 3

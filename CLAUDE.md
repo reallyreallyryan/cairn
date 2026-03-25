@@ -22,6 +22,7 @@ agent/                  # Core agent logic
   model_router.py       # Complexity classification → tier selection → budget check
   daemon.py             # Background task queue processor with signal handling
   digest.py             # Daily research digest pipeline orchestrator
+  evaluation.py         # Digest evaluation pipeline: approval/rejection metrics + threshold analysis
   notifications.py      # macOS osascript + file log notifications
   tools/
     __init__.py          # TOOL_REGISTRY dict, CATEGORY_TOOLS mapping, load_approved_custom_tools()
@@ -41,7 +42,7 @@ agent/                  # Core agent logic
 mcp_server/
   __init__.py
   config.py              # MCPSettings: mcp_base_url, mcp_host, mcp_port
-  server.py              # FastMCP server: 15 MCP tools, OAuth 2.1 via InMemoryOAuthProvider
+  server.py              # FastMCP server: 16 MCP tools, OAuth 2.1 via InMemoryOAuthProvider
 
 config/
   settings.py            # Pydantic BaseSettings, loads from .env
@@ -67,6 +68,9 @@ scms/
 tests/
   test_project_crud.py    # SCMSClient CRUD, MCP tool wrappers, classifier routing
   test_metatool_loading.py  # Integration test: custom tools get @tool decorator on load
+  test_digest_dedup.py    # Digest queue dedup, extract helpers, cancelled completed_at fix
+  test_digest_fewshot.py  # Few-shot calibration from approval/rejection history
+  test_evaluation.py      # Digest eval pipeline: parsing, metrics, bucketing, report
 
 main.py                  # CLI entry point (argparse), initial_state construction, graph invocation
 Dockerfile.mcp           # python:3.12-slim, uv-managed deps, runs mcp_server.server
@@ -155,7 +159,8 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 - **Subprocess fallback is opt-in**: `code_executor` falls back to subprocess only when `--allow-subprocess` CLI flag is set or `ALLOW_SUBPROCESS=true` is in `.env`. Without this, Docker unavailability returns an error. The subprocess fallback uses AST-based safety checks but these are bypassable — Docker is the primary security boundary.
 - **Redundancy detection**: `reflect_node` stops the loop if the same tool is called 3+ times or the same result appears twice.
 - **Two-stage tool promotion (by design)**: Metatool-created tools only go live in the daemon/CLI after human approval (stage 1). To promote a tool to the MCP server for cloud clients (claude.ai, Desktop, mobile), Claude Code adds it as an `@mcp.tool()` in `server.py` and redeploys to Railway (stage 2). This is intentional — no tool reaches cloud clients without two gates.
-- **Review-digest loops through approved items**: `--review-digest` may cycle through already-approved articles on repeat. The `_handle_review_digest()` in `main.py` calls `update_task_status(id, "completed")` on approval, but `get_pending_tasks()` may still return these items if the status update doesn't propagate correctly or there's a race with the query filter. Known bug — needs investigation.
+- **Digest dedup on ingest**: `queue_for_review()` checks existing `_digest_review` items by URL and title before inserting, preventing reviewed items from reappearing on subsequent pipeline runs.
+- **Ollama auto-start**: `check_services()` in `main.py` attempts to start Ollama via `subprocess.Popen(["ollama", "serve"])` if it's not reachable. Waits 3 seconds and retries. Falls back to a warning if still unreachable. The check always runs (not gated on `agent_model`) since the digest pipeline uses `get_llm("local")` directly.
 
 ## Digest Pipeline
 
@@ -165,7 +170,13 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 **Embedding Pre-Filter**: Each item's title+summary is embedded and compared against memories in the source's `relevance_projects`. The max cosine similarity across all projects determines if the item passes. Cold start bypass: if SCMS has no memories for target projects, all items pass through. Per-source `similarity_threshold` in `digest_sources.yaml` overrides the global default (0.3). As the user stores more memories, filtering automatically improves — a feedback loop.
 
-**CLI**: `--digest` (run manually), `--review-digest` (approve/reject items into SCMS), `--digest-status` (show recent runs).
+**Few-Shot Calibration**: `_build_few_shot_context()` pulls recent approved/rejected item titles from `task_queue` and injects them into the LLM scoring prompt as labeled examples. Requires 3+ approved items; falls back to the generic prompt otherwise. Improves scoring calibration as the user reviews more items.
+
+**Dedup on Ingest**: `queue_for_review()` fetches existing `_digest_review` items and skips duplicates by URL (primary) or title (fallback), preventing previously reviewed items from reappearing.
+
+**Evaluation Pipeline**: `agent/evaluation.py` mines approval/rejection history from `task_queue` to compute metrics: approval rates by relevance/embedding score buckets, per-source breakdown, F1-optimal thresholds, and weekly trends. Generates a markdown report saved to the digests directory.
+
+**CLI**: `--digest` (run manually), `--review-digest` (approve/reject items into SCMS), `--digest-status` (show recent runs), `--digest-eval` (run evaluation report).
 
 **Daemon**: Tasks with "digest" keywords bypass the graph and call `run_digest()` directly. Set up via `--queue "Run daily digest" --recurring "0 6 * * *"`.
 
@@ -190,7 +201,7 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 ## MCP Server
 
-`mcp_server/server.py` exposes SCMS as 15 tools over Streamable HTTP using FastMCP:
+`mcp_server/server.py` exposes SCMS as 16 tools over Streamable HTTP using FastMCP:
 
 - `scms_search`, `scms_store` — semantic memory search and storage
 - `get_project_context`, `list_projects` — project browsing
@@ -199,6 +210,7 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 - `get_decisions`, `log_decision` — decision log access
 - `agent_status` — queue counts and daily spend
 - `review_digest`, `digest_status` — digest pipeline review and monitoring
+- `digest_eval` — digest evaluation metrics report (approval rates, threshold analysis)
 
 **Auth**: OAuth 2.1 via `InMemoryOAuthProvider` with Dynamic Client Registration (DCR) and PKCE. Enabled when `MCP_BASE_URL` is set; no auth for local dev. Clients re-authenticate after Railway deploys (handled automatically by the OAuth flow).
 
@@ -227,5 +239,9 @@ Test files:
 - `tests/test_project_crud.py` — SCMSClient CRUD methods, MCP project tools, classifier routing
 - `tests/test_graph_integration.py` — Full classify→plan→act→reflect loop through build_graph()
 - `tests/test_metatool_loading.py` — Custom tool @tool decorator wrapping on load
+- `tests/test_digest_prefilter.py` — Embedding pre-filter: threshold, cold start, per-source override
+- `tests/test_digest_dedup.py` — Queue dedup by URL/title, extract helpers, cancelled completed_at
+- `tests/test_digest_fewshot.py` — Few-shot calibration: sufficient history, fallback, limits
+- `tests/test_evaluation.py` — Eval pipeline: parsing, metrics, buckets, thresholds, report generation
 
 Tests use mocked SCMS client — no Supabase, Docker, or API keys needed. Dev dependencies: `uv sync --group dev`.

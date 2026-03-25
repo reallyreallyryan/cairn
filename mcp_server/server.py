@@ -416,6 +416,39 @@ def digest_status() -> str:
         return f"Error: {e}"
 
 
+@mcp.tool(annotations={"readOnlyHint": True})
+def digest_eval() -> str:
+    """Run evaluation on digest approval/rejection history and return a metrics report."""
+    logger.info("MCP digest_eval")
+    try:
+        from agent.evaluation import run_evaluation
+        from pathlib import Path
+
+        result = run_evaluation()
+        if result["total_reviewed"] == 0:
+            return "No reviewed digest items found. Approve or reject some items first."
+
+        # Return the generated report
+        report_path = Path(result["report_path"])
+        if report_path.exists():
+            return report_path.read_text()
+
+        # Fallback: return summary
+        lines = [
+            "## Digest Evaluation",
+            f"Total reviewed: {result['total_reviewed']}",
+            f"Approval rate: {result['approval_rate']:.1%}",
+        ]
+        if result["suggestions"]:
+            lines.append("\n## Recommendations")
+            for s in result["suggestions"]:
+                lines.append(f"- {s}")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error("digest_eval error: %s", e)
+        return f"Error: {e}"
+
+
 # ---------------------------------------------------------------------------
 # Health endpoint
 # ---------------------------------------------------------------------------

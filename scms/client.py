@@ -480,7 +480,7 @@ class SCMSClient:
         now = datetime.now(timezone.utc).isoformat()
         if status == "running":
             updates["started_at"] = now
-        if status in ("completed", "failed"):
+        if status in ("completed", "failed", "cancelled"):
             updates["completed_at"] = now
         if result is not None:
             updates["result"] = result
@@ -531,6 +531,43 @@ class SCMSClient:
             .execute()
         )
         return sum(row.get("cost_usd", 0) or 0 for row in result.data)
+
+    def get_digest_review_items(self, limit: int = 500) -> list[dict]:
+        """Get all digest review items regardless of status (for dedup).
+
+        Returns minimal columns to check whether an item has already been
+        queued — used by queue_for_review() to avoid inserting duplicates.
+
+        # TODO: Consider content hash dedup if item volume exceeds limit.
+        # At daily runs with ~10 items/day, 500 covers ~50 days. If the
+        # pipeline runs for months, older duplicates could slip through.
+        """
+        result = (
+            self._client.table("task_queue")
+            .select("id,task,status")
+            .eq("project", "_digest_review")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data
+
+    def get_reviewed_digest_items(self, limit: int = 500) -> list[dict]:
+        """Get digest items that have been approved or rejected.
+
+        Returns full rows for evaluation metrics and few-shot calibration.
+        Approved items have status='completed', rejected have status='cancelled'.
+        """
+        result = (
+            self._client.table("task_queue")
+            .select("*")
+            .eq("project", "_digest_review")
+            .in_("status", ["completed", "cancelled"])
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data
 
     # ------------------------------------------------------------------
     # Helpers
