@@ -14,7 +14,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
 
 - **4-Tier Model Routing with Budget Caps** — YAML-driven rules route tasks to the cheapest capable model (Qwen 3 8B → Qwen 3 32B → Claude Sonnet → Claude Extended). Daily spend tracking auto-downgrades to local models when you hit your budget. No LiteLLM dependency — just a simple, readable routing config.
 
-- **Daily Research Digest Pipeline** — A recurring daemon task scrapes configurable news sources, pre-filters items by embedding similarity against your SCMS project memories, then summarizes with a local 32B model. Per-source similarity thresholds are configurable. Approved items become permanent memories, improving future filtering — a feedback loop. Runs for ~$0.03/month.
+- **Daily Research Digest Pipeline** — A recurring daemon task scrapes configurable news sources, pre-filters items by embedding similarity against your SCMS project memories, reranks with a cross-encoder (cairn-rank), then summarizes with a local 32B model. Three scoring layers — embedding similarity, cross-encoder relevance, and LLM scoring — are tracked against human judgment in an evaluation pipeline. Approved items become permanent memories, improving future filtering — a feedback loop. Runs for ~$0.03/month.
 
 - **MCP Server with OAuth 2.1** — Your agent's memory and task queue are accessible from claude.ai, Claude Desktop, Claude Code, and mobile via a Railway-deployed MCP server with full OAuth 2.1 (DCR + PKCE). One of the few Python FastMCP + OAuth reference implementations available.
 
@@ -152,6 +152,7 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 | 5c | Hardening | Classifier default fix (multi→research), `archived` DB status, MCP ToolAnnotations, httpx session fix, ddgs migration |
 | 6 | Digest Relevance | Embedding-based pre-filter for digest pipeline, per-source similarity thresholds, cold-start bypass |
 | 7 | Digest Hardening | Few-shot calibration from approval history, digest dedup on ingest, evaluation pipeline with threshold analysis, digest sources expanded to 16, digest_eval MCP tool |
+| 8 | Security + Reranking | gitleaks pre-commit hook, cairn-rank cross-encoder integration into digest pipeline, three-layer scoring eval |
 
 ## Project Structure
 
@@ -203,7 +204,8 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 │   ├── test_metatool_loading.py
 │   ├── test_digest_dedup.py
 │   ├── test_digest_fewshot.py
-│   └── test_evaluation.py
+│   ├── test_evaluation.py
+│   └── test_rerank.py
 └── main.py               # CLI entry point
 ```
 
@@ -245,6 +247,8 @@ The daily digest pipeline runs almost entirely on local models. The only cloud c
 
 - [x] Improve digest relevance scoring (embedding pre-filter + few-shot calibration from approval/rejection history)
 - [x] Evaluation pipeline using digest approval/rejection data
+- [x] Cross-encoder reranking via cairn-rank (three-layer scoring comparison)
+- [x] Security hardening (gitleaks pre-commit hook)
 - [ ] Memory deduplication and aging
 - [ ] 24/7 daemon deployment on Railway
 - [ ] Multi-agent collaboration patterns

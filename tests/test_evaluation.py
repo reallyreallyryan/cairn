@@ -14,6 +14,7 @@ from agent.evaluation import (
     run_evaluation,
     MIN_REVIEWS,
     MIN_BUCKET_SIZE,
+    CROSS_ENCODER_BUCKETS,
 )
 
 
@@ -23,14 +24,16 @@ from agent.evaluation import (
 
 def _make_review_row(title: str, source: str, relevance: float,
                      embedding: float, approved: bool,
+                     cross_encoder: float = 0.0,
                      created_at: str = "2026-03-20T10:00:00+00:00") -> dict:
     """Build a mock task_queue row as returned by Supabase."""
     status = "completed" if approved else "cancelled"
+    ce_part = f"\nCrossEncoder: {cross_encoder:.4f}" if cross_encoder != 0.0 else ""
     task_text = (
         f"[Digest Review] {title}\n"
         f"Source: {source}\n"
         f"Relevance: {relevance:.2f}\n"
-        f"Embedding: {embedding:.2f}\n"
+        f"Embedding: {embedding:.2f}{ce_part}\n"
         f"Summary: Summary of {title}\n"
         f"URL: https://example.com/{title.lower().replace(' ', '-')}"
     )
@@ -48,6 +51,7 @@ def _make_review_row(title: str, source: str, relevance: float,
 
 def _make_reviewed_item(title: str = "Test Article", source: str = "Test Blog",
                         relevance: float = 0.8, embedding: float = 0.4,
+                        cross_encoder: float = 0.0,
                         approved: bool = True,
                         created_at: str = "2026-03-20T10:00:00+00:00") -> ReviewedItem:
     return ReviewedItem(
@@ -55,6 +59,7 @@ def _make_reviewed_item(title: str = "Test Article", source: str = "Test Blog",
         source_name=source,
         relevance_score=relevance,
         embedding_score=embedding,
+        cross_encoder_score=cross_encoder,
         approved=approved,
         created_at=created_at,
     )
@@ -70,6 +75,7 @@ def _make_items_for_metrics(n_approved: int, n_rejected: int,
             source="Blog A" if i % 2 == 0 else "Blog B",
             relevance=0.6 + (i % 4) * 0.1,
             embedding=0.2 + (i % 4) * 0.1,
+            cross_encoder=-2.0 + (i % 5) * 2.0,
             approved=True,
             created_at=f"2026-03-{10 + week_offset + (i % 7):02d}T10:00:00+00:00",
         ))
@@ -79,6 +85,7 @@ def _make_items_for_metrics(n_approved: int, n_rejected: int,
             source="Blog A" if i % 2 == 0 else "Blog C",
             relevance=0.6 + (i % 3) * 0.1,
             embedding=0.1 + (i % 3) * 0.1,
+            cross_encoder=-4.0 + (i % 4) * 1.5,
             approved=False,
             created_at=f"2026-03-{10 + week_offset + (i % 7):02d}T10:00:00+00:00",
         ))
@@ -147,6 +154,45 @@ class TestParseTaskText:
         assert result is not None
         assert result["relevance_score"] == 0.0
         assert result["embedding_score"] == 0.0
+        assert result["cross_encoder_score"] == 0.0
+
+    def test_parse_cross_encoder_score(self):
+        text = (
+            "[Digest Review] Reranked Article\n"
+            "Source: Blog\n"
+            "Relevance: 0.85\n"
+            "Embedding: 0.42\n"
+            "CrossEncoder: 3.7500\n"
+            "Summary: A reranked item\n"
+            "URL: https://example.com/reranked"
+        )
+        result = parse_task_text(text)
+        assert result is not None
+        assert result["cross_encoder_score"] == pytest.approx(3.75)
+
+    def test_parse_negative_cross_encoder_score(self):
+        text = (
+            "[Digest Review] Low Rank Article\n"
+            "Source: Blog\n"
+            "Relevance: 0.65\n"
+            "CrossEncoder: -2.5000\n"
+            "Summary: Not very relevant"
+        )
+        result = parse_task_text(text)
+        assert result is not None
+        assert result["cross_encoder_score"] == pytest.approx(-2.5)
+
+    def test_parse_without_cross_encoder_defaults_zero(self):
+        """Older items without CrossEncoder line should default to 0.0."""
+        text = (
+            "[Digest Review] Old Article\n"
+            "Source: Blog\n"
+            "Relevance: 0.70\n"
+            "Summary: Pre-reranking item"
+        )
+        result = parse_task_text(text)
+        assert result is not None
+        assert result["cross_encoder_score"] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +284,22 @@ class TestComputeMetrics:
         assert metrics.by_embedding_bucket["0.3-0.4"]["total"] == 1
         assert metrics.by_embedding_bucket["0.4-0.6"]["total"] == 1
         assert metrics.by_embedding_bucket["0.6+"]["total"] == 1
+
+    def test_cross_encoder_buckets(self):
+        items = [
+            _make_reviewed_item(cross_encoder=-5.0, approved=False),
+            _make_reviewed_item(cross_encoder=-1.0, approved=False),
+            _make_reviewed_item(cross_encoder=1.0, approved=True),
+            _make_reviewed_item(cross_encoder=3.0, approved=True),
+            _make_reviewed_item(cross_encoder=7.0, approved=True),
+        ]
+        metrics = compute_metrics(items)
+
+        assert metrics.by_cross_encoder_bucket["-10.0--2.0"]["total"] == 1
+        assert metrics.by_cross_encoder_bucket["-2.0-0.0"]["total"] == 1
+        assert metrics.by_cross_encoder_bucket["0.0-2.0"]["total"] == 1
+        assert metrics.by_cross_encoder_bucket["2.0-5.0"]["total"] == 1
+        assert metrics.by_cross_encoder_bucket["5.0+"]["total"] == 1
 
     def test_per_source_breakdown(self):
         items = [
@@ -347,6 +409,7 @@ class TestBuildReport:
         assert "## Summary" in report
         assert "## Approval by Relevance Score" in report
         assert "## Approval by Embedding Score" in report
+        assert "## Approval by Cross-Encoder Score" in report
         assert "## Per-Source Breakdown" in report
         assert "## Recommendations" in report
         assert "Test suggestion" in report

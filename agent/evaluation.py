@@ -22,6 +22,7 @@ MIN_BUCKET_SIZE = 5      # Minimum items per bucket/source for per-segment stats
 
 RELEVANCE_BUCKETS = [(0.6, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 1.01)]
 EMBEDDING_BUCKETS = [(0.0, 0.2), (0.2, 0.3), (0.3, 0.4), (0.4, 0.6), (0.6, 1.01)]
+CROSS_ENCODER_BUCKETS = [(-10.0, -2.0), (-2.0, 0.0), (0.0, 2.0), (2.0, 5.0), (5.0, 15.0)]
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +41,7 @@ class ReviewedItem:
     created_at: str
     summary: str = ""
     url: str = ""
+    cross_encoder_score: float = 0.0
 
 
 @dataclass
@@ -52,9 +54,11 @@ class EvalMetrics:
     approval_rate: float
     by_relevance_bucket: dict[str, dict] = field(default_factory=dict)
     by_embedding_bucket: dict[str, dict] = field(default_factory=dict)
+    by_cross_encoder_bucket: dict[str, dict] = field(default_factory=dict)
     by_source: dict[str, dict] = field(default_factory=dict)
     optimal_relevance_threshold: float | None = None
     optimal_embedding_threshold: float | None = None
+    optimal_cross_encoder_threshold: float | None = None
     weekly_trend: list[dict] = field(default_factory=list)
     data_sufficient: bool = False
     date_range: str = ""
@@ -85,6 +89,9 @@ def parse_task_text(task_text: str) -> dict | None:
     embedding_match = re.search(r"Embedding:\s*([\d.]+)", task_text)
     embedding_score = float(embedding_match.group(1)) if embedding_match else 0.0
 
+    ce_match = re.search(r"CrossEncoder:\s*([-\d.]+)", task_text)
+    cross_encoder_score = float(ce_match.group(1)) if ce_match else 0.0
+
     summary_match = re.search(r"Summary:\s*(.+?)(?:\nURL:|\Z)", task_text, re.DOTALL)
     summary = summary_match.group(1).strip() if summary_match else ""
 
@@ -96,6 +103,7 @@ def parse_task_text(task_text: str) -> dict | None:
         "source_name": source_name,
         "relevance_score": relevance_score,
         "embedding_score": embedding_score,
+        "cross_encoder_score": cross_encoder_score,
         "summary": summary,
         "url": url,
     }
@@ -129,6 +137,7 @@ def load_reviewed_items(client=None, limit: int = 500) -> list[ReviewedItem]:
             created_at=row.get("created_at", ""),
             summary=parsed["summary"],
             url=parsed["url"],
+            cross_encoder_score=parsed["cross_encoder_score"],
         ))
 
     return items
@@ -138,9 +147,9 @@ def load_reviewed_items(client=None, limit: int = 500) -> list[ReviewedItem]:
 # Metrics computation
 # ---------------------------------------------------------------------------
 
-def _bucket_label(low: float, high: float) -> str:
+def _bucket_label(low: float, high: float, is_last: bool = False) -> str:
     """Format a bucket range as a label string."""
-    if high > 1.0:
+    if is_last:
         return f"{low:.1f}+"
     return f"{low:.1f}-{high:.1f}"
 
@@ -149,8 +158,8 @@ def _bucket_items(items: list[ReviewedItem], buckets: list[tuple[float, float]],
                   score_attr: str) -> dict[str, dict]:
     """Group items into score buckets and compute approval rate per bucket."""
     result = {}
-    for low, high in buckets:
-        label = _bucket_label(low, high)
+    for idx, (low, high) in enumerate(buckets):
+        label = _bucket_label(low, high, is_last=(idx == len(buckets) - 1))
         in_bucket = [i for i in items if low <= getattr(i, score_attr) < high]
         total = len(in_bucket)
         approved = sum(1 for i in in_bucket if i.approved)
@@ -258,6 +267,7 @@ def compute_metrics(items: list[ReviewedItem]) -> EvalMetrics:
 
     metrics.by_relevance_bucket = _bucket_items(items, RELEVANCE_BUCKETS, "relevance_score")
     metrics.by_embedding_bucket = _bucket_items(items, EMBEDDING_BUCKETS, "embedding_score")
+    metrics.by_cross_encoder_bucket = _bucket_items(items, CROSS_ENCODER_BUCKETS, "cross_encoder_score")
 
     # Per-source breakdown
     sources: dict[str, dict] = {}
@@ -278,6 +288,9 @@ def compute_metrics(items: list[ReviewedItem]) -> EvalMetrics:
     )
     metrics.optimal_embedding_threshold = _compute_optimal_threshold(
         items, "embedding_score", start=0.1, stop=0.8
+    )
+    metrics.optimal_cross_encoder_threshold = _compute_optimal_threshold(
+        items, "cross_encoder_score", start=-5.0, stop=8.0, step=0.5
     )
 
     metrics.weekly_trend = _compute_weekly_trend(items)
@@ -331,6 +344,14 @@ def suggest_thresholds(metrics: EvalMetrics, config: dict) -> list[str]:
                 f"Consider {'raising' if opt > current_emb else 'lowering'} "
                 f"embedding threshold from {current_emb:.2f} to {opt:.2f}"
             )
+
+    # Cross-encoder threshold suggestion (informational — no current config value)
+    if metrics.optimal_cross_encoder_threshold is not None:
+        opt = metrics.optimal_cross_encoder_threshold
+        suggestions.append(
+            f"Optimal cross-encoder threshold: {opt:.1f} "
+            f"(items above this score have the best F1 for approval)"
+        )
 
     # Per-source suggestions
     for name, data in metrics.by_source.items():
@@ -435,6 +456,24 @@ def build_eval_report(metrics: EvalMetrics, suggestions: list[str]) -> str:
         lines.append("*\\* fewer than 5 items — interpret with caution*")
         lines.append("")
 
+    # Cross-encoder buckets
+    if metrics.by_cross_encoder_bucket:
+        lines.extend([
+            "## Approval by Cross-Encoder Score",
+            "",
+            _table_row(["Bucket", "Total", "Approved", "Rate"]),
+            _table_row(["---", "---", "---", "---"]),
+        ])
+        for label, data in metrics.by_cross_encoder_bucket.items():
+            lines.append(_table_row([
+                label, str(data["total"]), str(data["approved"]),
+                f"{data['rate']:.1%}" if data["total"] >= MIN_BUCKET_SIZE else
+                f"{data['rate']:.1%} *",
+            ]))
+        lines.append("")
+        lines.append("*\\* fewer than 5 items — interpret with caution*")
+        lines.append("")
+
     # Per-source breakdown
     if metrics.by_source:
         lines.extend([
@@ -452,7 +491,12 @@ def build_eval_report(metrics: EvalMetrics, suggestions: list[str]) -> str:
         lines.append("")
 
     # Threshold analysis
-    if metrics.optimal_relevance_threshold is not None or metrics.optimal_embedding_threshold is not None:
+    has_thresholds = any([
+        metrics.optimal_relevance_threshold,
+        metrics.optimal_embedding_threshold,
+        metrics.optimal_cross_encoder_threshold,
+    ])
+    if has_thresholds:
         lines.extend(["## Threshold Analysis", ""])
         if metrics.optimal_relevance_threshold is not None:
             lines.append(
@@ -461,6 +505,10 @@ def build_eval_report(metrics: EvalMetrics, suggestions: list[str]) -> str:
         if metrics.optimal_embedding_threshold is not None:
             lines.append(
                 f"Optimal embedding threshold: **{metrics.optimal_embedding_threshold:.2f}**"
+            )
+        if metrics.optimal_cross_encoder_threshold is not None:
+            lines.append(
+                f"Optimal cross-encoder threshold: **{metrics.optimal_cross_encoder_threshold:.1f}**"
             )
         lines.append("")
 

@@ -166,7 +166,9 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 `agent/digest.py` is a standalone orchestrator that chains existing tools to produce a daily research digest. It does NOT use the LangGraph graph — it calls tools and LLMs directly.
 
-**Flow**: `run_digest(frequency)` → load sources from `config/digest_sources.yaml` → for each source, fetch via `url_reader` or `arxiv_search` → LLM (local 32B) extracts items → **embedding pre-filter** compares each item against SCMS project memories via `get_embeddings_batch()` + `search_memories_by_embedding()`, filters items below per-source `similarity_threshold` → LLM scores only items that passed pre-filter → build markdown digest → save to `~/Documents/cairn/digests/` → queue high-relevance items in task_queue (project=`_digest_review`) with both relevance and embedding scores for human review → macOS notification.
+**Flow**: `run_digest(frequency)` → load sources from `config/digest_sources.yaml` → for each source, fetch via `url_reader` or `arxiv_search` → LLM (local 32B) extracts items → **embedding pre-filter** compares each item against SCMS project memories via `get_embeddings_batch()` + `search_memories_by_embedding()`, filters items below per-source `similarity_threshold` → **cross-encoder reranking** via cairn-rank's `CrossEncoderReranker` scores items against `relevance_projects` (additive, does not filter) → LLM scores only items that passed pre-filter → build markdown digest → save to `~/Documents/cairn/digests/` → queue high-relevance items in task_queue (project=`_digest_review`) with relevance, embedding, and cross-encoder scores for human review → macOS notification.
+
+**Cross-Encoder Reranking**: `_rerank_items()` uses cairn-rank's `CrossEncoderReranker` (cross-encoder/ms-marco-MiniLM-L-6-v2, ~22M params) to score each item's title+summary against each `relevance_projects` entry, taking the max score. Scores are raw logits (roughly -10 to +10). This is additive — it sets `cross_encoder_score` on each `DigestItem` but does not filter or reorder. Lazy-imports cairn-rank and degrades gracefully if unavailable.
 
 **Embedding Pre-Filter**: Each item's title+summary is embedded and compared against memories in the source's `relevance_projects`. The max cosine similarity across all projects determines if the item passes. Cold start bypass: if SCMS has no memories for target projects, all items pass through. Per-source `similarity_threshold` in `digest_sources.yaml` overrides the global default (0.3). As the user stores more memories, filtering automatically improves — a feedback loop.
 
@@ -174,7 +176,7 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 **Dedup on Ingest**: `queue_for_review()` fetches existing `_digest_review` items and skips duplicates by URL (primary) or title (fallback), preventing previously reviewed items from reappearing.
 
-**Evaluation Pipeline**: `agent/evaluation.py` mines approval/rejection history from `task_queue` to compute metrics: approval rates by relevance/embedding score buckets, per-source breakdown, F1-optimal thresholds, and weekly trends. Generates a markdown report saved to the digests directory.
+**Evaluation Pipeline**: `agent/evaluation.py` mines approval/rejection history from `task_queue` to compute metrics: approval rates by relevance/embedding/cross-encoder score buckets, per-source breakdown, F1-optimal thresholds, and weekly trends. Generates a markdown report saved to the digests directory.
 
 **CLI**: `--digest` (run manually), `--review-digest` (approve/reject items into SCMS), `--digest-status` (show recent runs), `--digest-eval` (run evaluation report).
 
@@ -222,7 +224,7 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 ## Dependencies
 
-LangGraph + LangChain ecosystem for agent orchestration. Supabase for persistence. Docker SDK for sandboxing. FastMCP for MCP server + OAuth. DuckDuckGo, trafilatura, arxiv for data sources. Rich for terminal UI. Croniter for recurring task scheduling.
+LangGraph + LangChain ecosystem for agent orchestration. Supabase for persistence. Docker SDK for sandboxing. FastMCP for MCP server + OAuth. DuckDuckGo, trafilatura, arxiv for data sources. Rich for terminal UI. Croniter for recurring task scheduling. cairn-rank for cross-encoder reranking in the digest pipeline.
 
 ## Testing
 
@@ -243,5 +245,6 @@ Test files:
 - `tests/test_digest_dedup.py` — Queue dedup by URL/title, extract helpers, cancelled completed_at
 - `tests/test_digest_fewshot.py` — Few-shot calibration: sufficient history, fallback, limits
 - `tests/test_evaluation.py` — Eval pipeline: parsing, metrics, buckets, thresholds, report generation
+- `tests/test_rerank.py` — Cross-encoder reranking: scoring, max-across-projects, graceful degradation
 
 Tests use mocked SCMS client — no Supabase, Docker, or API keys needed. Dev dependencies: `uv sync --group dev`.

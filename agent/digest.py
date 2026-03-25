@@ -28,6 +28,7 @@ class DigestItem:
     source_name: str = ""
     relevance_score: float = 0.0
     embedding_score: float = 0.0
+    cross_encoder_score: float = 0.0
 
 
 @dataclass
@@ -416,6 +417,56 @@ def embedding_prefilter(
         return items, []
 
 
+def _rerank_items(
+    items: list[DigestItem],
+    source: dict,
+) -> list[DigestItem]:
+    """Score items with cairn-rank cross-encoder against project queries.
+
+    Additive only — sets cross_encoder_score on each item but does not
+    filter or reorder.  Falls back gracefully if cairn-rank is unavailable.
+    """
+    if not items:
+        return items
+
+    relevance_projects = source.get("relevance_projects", [])
+    if not relevance_projects:
+        return items
+
+    try:
+        from cairn_rank import CrossEncoderReranker, Document as RankDocument
+    except ImportError:
+        logger.warning("cairn-rank not installed, skipping cross-encoder scoring")
+        return items
+
+    try:
+        reranker = CrossEncoderReranker()
+
+        for item in items:
+            doc = RankDocument(
+                content=f"{item.title}. {item.summary}",
+                title=item.title,
+                url=item.url,
+                source=item.source_name,
+            )
+            max_score = float("-inf")
+            for project in relevance_projects:
+                ranked = reranker.rank(project, [doc])
+                if ranked:
+                    max_score = max(max_score, ranked[0].score)
+
+            item.cross_encoder_score = max_score if max_score > float("-inf") else 0.0
+
+        logger.info(
+            "Cross-encoder scoring for '%s': scored %d items",
+            source.get("name"), len(items),
+        )
+    except Exception as e:
+        logger.warning("Cross-encoder scoring failed, continuing without: %s", e)
+
+    return items
+
+
 # ---------------------------------------------------------------------------
 # Digest assembly and output
 # ---------------------------------------------------------------------------
@@ -455,7 +506,8 @@ def build_digest(all_results: list[SourceResult], config: dict) -> str:
         for item in high_items:
             url_part = f" — [link]({item.url})" if item.url else ""
             emb_part = f", similarity: {item.embedding_score:.2f}" if item.embedding_score > 0 else ""
-            lines.append(f"- **{item.title}** (relevance: {item.relevance_score:.1f}{emb_part}, source: {item.source_name}){url_part}")
+            ce_part = f", CE: {item.cross_encoder_score:.1f}" if item.cross_encoder_score != 0.0 else ""
+            lines.append(f"- **{item.title}** (relevance: {item.relevance_score:.1f}{emb_part}{ce_part}, source: {item.source_name}){url_part}")
             lines.append(f"  {item.summary}")
             lines.append("")
     else:
@@ -469,7 +521,8 @@ def build_digest(all_results: list[SourceResult], config: dict) -> str:
         for item in other_items:
             url_part = f" — [link]({item.url})" if item.url else ""
             emb_part = f", similarity: {item.embedding_score:.2f}" if item.embedding_score > 0 else ""
-            lines.append(f"- **{item.title}** ({item.relevance_score:.1f}{emb_part}, {item.source_name}){url_part}")
+            ce_part = f", CE: {item.cross_encoder_score:.1f}" if item.cross_encoder_score != 0.0 else ""
+            lines.append(f"- **{item.title}** ({item.relevance_score:.1f}{emb_part}{ce_part}, {item.source_name}){url_part}")
             lines.append(f"  {item.summary}")
             lines.append("")
     else:
@@ -573,10 +626,11 @@ def queue_for_review(
                 # Build a reviewable task description
                 url_part = f"\nURL: {item.url}" if item.url else ""
                 emb_part = f"\nEmbedding: {item.embedding_score:.2f}" if item.embedding_score > 0 else ""
+                ce_part = f"\nCrossEncoder: {item.cross_encoder_score:.4f}" if item.cross_encoder_score != 0.0 else ""
                 task_text = (
                     f"[Digest Review] {item.title}\n"
                     f"Source: {item.source_name}\n"
-                    f"Relevance: {item.relevance_score:.2f}{emb_part}\n"
+                    f"Relevance: {item.relevance_score:.2f}{emb_part}{ce_part}\n"
                     f"Summary: {item.summary}{url_part}"
                 )
                 record = client.enqueue_task(
@@ -633,7 +687,10 @@ def run_digest(frequency: str = "daily") -> dict:
             # 3a. Embedding pre-filter: remove items not relevant to SCMS memories
             passed, filtered = embedding_prefilter(result.items, source, config)
             result.filtered_items = filtered
-            # 3b. LLM scoring on items that passed pre-filter only
+            # 3b. Cross-encoder scoring (additive, does not filter)
+            if passed:
+                passed = _rerank_items(passed, source)
+            # 3c. LLM scoring on items that passed pre-filter only
             if passed:
                 result.items = summarize_and_score(passed, source)
             else:
