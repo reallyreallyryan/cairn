@@ -10,8 +10,11 @@ wheels/
 .venv
 .uv/
 
-# Environment variables
+# Environment / secrets
 .env
+.env.*
+*.key
+*.pem
 
 # IDE
 .idea/
@@ -30,6 +33,11 @@ wheels/
 # Custom tools (metatool-generated)
 agent/tools/custom/*.py
 !agent/tools/custom/.gitkeep
+
+# Test / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Personal docs (not for public repo)
 USER_SUMMARY.md
