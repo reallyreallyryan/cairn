@@ -449,6 +449,46 @@ def digest_eval() -> str:
         return f"Error: {e}"
 
 
+@mcp.tool(annotations={"readOnlyHint": False})
+def compile_digest(since: str | None = None) -> str:
+    """Compile approved digest items into deep-dive and briefing summaries.
+
+    Fetches full article content for approved items, generates two markdown
+    documents: a technical deep dive and an accessible briefing.
+
+    Args:
+        since: ISO date string (YYYY-MM-DD) to look back from. Default: last 24 hours.
+    """
+    logger.info("MCP compile_digest: since=%s", since)
+    try:
+        from agent.compile_digest import run_compile_digest
+        from pathlib import Path
+
+        result = run_compile_digest(since=since)
+        if result["articles_compiled"] == 0:
+            return "No approved digest items found for this period."
+
+        # Return the briefing content inline (useful for chat context)
+        briefing_path = Path(result["briefing_path"])
+        if briefing_path.exists():
+            content = briefing_path.read_text()
+            return (
+                f"{content}\n\n---\n"
+                f"Deep dive saved to: {result['deep_path']}\n"
+                f"Articles: {result['articles_compiled']} "
+                f"({result['articles_with_full_content']} with full content)"
+            )
+
+        return (
+            f"Compiled {result['articles_compiled']} articles.\n"
+            f"Deep dive: {result['deep_path']}\n"
+            f"Briefing: {result['briefing_path']}"
+        )
+    except Exception as e:
+        logger.error("compile_digest error: %s", e)
+        return f"Error: {e}"
+
+
 # ---------------------------------------------------------------------------
 # Health endpoint
 # ---------------------------------------------------------------------------

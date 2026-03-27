@@ -295,6 +295,16 @@ def main():
         action="store_true",
         help="Run evaluation on digest approval/rejection history",
     )
+    parser.add_argument(
+        "--compile-digest",
+        action="store_true",
+        help="Compile approved digest items into deep-dive and briefing documents",
+    )
+    parser.add_argument(
+        "--compile-since",
+        metavar="YYYY-MM-DD",
+        help="Date to look back from for --compile-digest (default: last 24 hours)",
+    )
 
     args = parser.parse_args()
 
@@ -353,6 +363,10 @@ def main():
         return
     if args.digest_eval:
         _handle_digest_eval()
+        return
+    if args.compile_digest:
+        check_services()
+        _handle_compile_digest(args.compile_since)
         return
 
     check_services()
@@ -677,6 +691,31 @@ def _handle_digest_eval():
         console.print("\n[bold]Recommendations:[/bold]")
         for s in result["suggestions"]:
             console.print(f"  [dim]-[/dim] {s}")
+
+
+def _handle_compile_digest(since: str | None):
+    from agent.compile_digest import run_compile_digest
+
+    since_label = since or "last 24 hours"
+    console.print(f"[bold green]Compiling digest ({since_label})...[/bold green]")
+    with console.status("[bold green]Fetching articles and summarizing...", spinner="dots"):
+        result = run_compile_digest(since=since)
+
+    if result["articles_compiled"] == 0:
+        console.print("[dim]No approved digest items found for this period.[/dim]")
+        return
+
+    console.print(Panel(
+        f"Articles compiled: {result['articles_compiled']}\n"
+        f"With full content: {result['articles_with_full_content']}\n"
+        f"Deep dive: {result['deep_path']}\n"
+        f"Briefing: {result['briefing_path']}",
+        title="Daily Digest Complete",
+        border_style="green",
+    ))
+    if result["errors"]:
+        for err in result["errors"]:
+            console.print(f"  [yellow]Warning:[/yellow] {err}")
 
 
 if __name__ == "__main__":

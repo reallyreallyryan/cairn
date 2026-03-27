@@ -552,17 +552,26 @@ class SCMSClient:
         )
         return result.data
 
-    def get_reviewed_digest_items(self, limit: int = 500) -> list[dict]:
+    def get_reviewed_digest_items(self, limit: int = 500, since: str | None = None) -> list[dict]:
         """Get digest items that have been approved or rejected.
 
         Returns full rows for evaluation metrics and few-shot calibration.
         Approved items have status='completed', rejected have status='cancelled'.
+
+        Args:
+            limit: Maximum number of items to return.
+            since: ISO datetime string to filter by completed_at >= since.
         """
-        result = (
+        query = (
             self._client.table("task_queue")
             .select("*")
             .eq("project", "_digest_review")
             .in_("status", ["completed", "cancelled"])
+        )
+        if since:
+            query = query.gte("completed_at", since)
+        result = (
+            query
             .order("created_at", desc=True)
             .limit(limit)
             .execute()

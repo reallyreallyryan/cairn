@@ -23,6 +23,7 @@ agent/                  # Core agent logic
   daemon.py             # Background task queue processor with signal handling
   digest.py             # Daily research digest pipeline orchestrator
   evaluation.py         # Digest evaluation pipeline: approval/rejection metrics + threshold analysis
+  compile_digest.py       # Digest compiler: fetches articles, LLM summaries, two output formats
   notifications.py      # macOS osascript + file log notifications
   tools/
     __init__.py          # TOOL_REGISTRY dict, CATEGORY_TOOLS mapping, load_approved_custom_tools()
@@ -42,7 +43,7 @@ agent/                  # Core agent logic
 mcp_server/
   __init__.py
   config.py              # MCPSettings: mcp_base_url, mcp_host, mcp_port
-  server.py              # FastMCP server: 16 MCP tools, OAuth 2.1 via InMemoryOAuthProvider
+  server.py              # FastMCP server: 17 MCP tools, OAuth 2.1 via InMemoryOAuthProvider
 
 config/
   settings.py            # Pydantic BaseSettings, loads from .env
@@ -72,6 +73,7 @@ tests/
   test_digest_fewshot.py  # Few-shot calibration from approval/rejection history
   test_evaluation.py      # Digest eval pipeline: parsing, metrics, bucketing, report
   test_rerank.py          # Cross-encoder reranking: scoring, graceful degradation
+  test_compile_digest.py   # Digest compiler: fetching, summarization, document building
 
 main.py                  # CLI entry point (argparse), initial_state construction, graph invocation
 .pre-commit-config.yaml  # gitleaks secret scanning on every commit
@@ -180,7 +182,9 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 **Evaluation Pipeline**: `agent/evaluation.py` mines approval/rejection history from `task_queue` to compute metrics: approval rates by relevance/embedding/cross-encoder score buckets, per-source breakdown, F1-optimal thresholds, and weekly trends. Generates a markdown report saved to the digests directory.
 
-**CLI**: `--digest` (run manually), `--review-digest` (approve/reject items into SCMS), `--digest-status` (show recent runs), `--digest-eval` (run evaluation report).
+**Daily Digest Compiler**: `agent/compile_digest.py` compiles approved digest items into two readable documents. Fetches full article content via httpx + trafilatura, generates per-article summaries using local Qwen 32B in two styles: deep dive (150-300 words, technical depth) and briefing (100-200 words, accessible language). Saves both to the digests directory. Graceful degradation: unfetchable URLs fall back to snippet-based summaries.
+
+**CLI**: `--digest` (run manually), `--review-digest` (approve/reject items into SCMS), `--digest-status` (show recent runs), `--digest-eval` (run evaluation report), `--compile-digest` (compile approved items into deep-dive and briefing documents), `--compile-since YYYY-MM-DD` (date filter for `--compile-digest`).
 
 **Daemon**: Tasks with "digest" keywords bypass the graph and call `run_digest()` directly. Set up via `--queue "Run daily digest" --recurring "0 6 * * *"`.
 
@@ -205,7 +209,7 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 ## MCP Server
 
-`mcp_server/server.py` exposes SCMS as 16 tools over Streamable HTTP using FastMCP:
+`mcp_server/server.py` exposes SCMS as 17 tools over Streamable HTTP using FastMCP:
 
 - `scms_search`, `scms_store` — semantic memory search and storage
 - `get_project_context`, `list_projects` — project browsing
@@ -214,6 +218,7 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 - `get_decisions`, `log_decision` — decision log access
 - `agent_status` — queue counts and daily spend
 - `review_digest`, `digest_status` — digest pipeline review and monitoring
+- `compile_digest` — compile approved items into deep-dive and briefing documents
 - `digest_eval` — digest evaluation metrics report (approval rates, threshold analysis)
 
 **Auth**: OAuth 2.1 via `InMemoryOAuthProvider` with Dynamic Client Registration (DCR) and PKCE. Enabled when `MCP_BASE_URL` is set; no auth for local dev. Clients re-authenticate after Railway deploys (handled automatically by the OAuth flow).
@@ -248,5 +253,6 @@ Test files:
 - `tests/test_digest_fewshot.py` — Few-shot calibration: sufficient history, fallback, limits
 - `tests/test_evaluation.py` — Eval pipeline: parsing, metrics, buckets, thresholds, report generation
 - `tests/test_rerank.py` — Cross-encoder reranking: scoring, max-across-projects, graceful degradation
+- `tests/test_compile_digest.py` — Digest compiler: fetching, summarization, document building
 
 Tests use mocked SCMS client — no Supabase, Docker, or API keys needed. Dev dependencies: `uv sync --group dev`.

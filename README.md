@@ -126,6 +126,8 @@ python main.py --digest              # Run manually
 python main.py --review-digest       # Review & approve/reject items into memory
 python main.py --digest-status       # Check last run stats
 python main.py --digest-eval         # Run evaluation report on approval/rejection history
+python main.py --compile-digest      # Compile approved items into deep-dive + briefing docs
+python main.py --compile-digest --compile-since 2026-03-21  # Filter by date
 
 # Task queue & daemon
 python main.py --queue "Research MCP best practices" --priority 2
@@ -153,6 +155,7 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 | 6 | Digest Relevance | Embedding-based pre-filter for digest pipeline, per-source similarity thresholds, cold-start bypass |
 | 7 | Digest Hardening | Few-shot calibration from approval history, digest dedup on ingest, evaluation pipeline with threshold analysis, digest sources expanded to 16, digest_eval MCP tool |
 | 8 | Security + Reranking | gitleaks pre-commit hook, cairn-rank cross-encoder integration into digest pipeline, three-layer scoring eval |
+| 8b | Digest Compiler | Compile approved digest items into deep-dive and briefing documents with full article fetching and LLM summarization |
 
 ## Project Structure
 
@@ -171,6 +174,7 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 │   ├── daemon.py         # Background task queue processor
 │   ├── digest.py         # Daily research digest orchestrator
 │   ├── evaluation.py     # Digest evaluation: metrics, thresholds, reports
+│   ├── compile_digest.py  # Digest compiler: article fetching + LLM summaries
 │   ├── notifications.py  # macOS + file log notifications
 │   └── tools/            # 16+ tools (web, files, code, SCMS, project, metatool)
 │       ├── web_search.py
