@@ -23,6 +23,9 @@ dependencies = [
     "trafilatura>=2.0.0",
     "fastmcp>=2.0.0",
     "cairn-rank @ git+https://github.com/reallyreallyryan/cairn-rank.git",
+    "kokoro>=0.9",
+    "soundfile>=0.13",
+    "pydub>=0.25",
 ]
 
 [dependency-groups]

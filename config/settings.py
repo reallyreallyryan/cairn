@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     # Digest
     digest_config_path: str = "config/digest_sources.yaml"
 
+    # Audio digest (TTS)
+    tts_provider: str = "auto"         # "auto" (kokoro→openai), "kokoro", "openai", "off"
+    tts_voice: str = "af_heart"        # Kokoro voice (American English)
+    tts_openai_voice: str = "nova"     # OpenAI TTS fallback voice
+    tts_speed: float = 1.0             # Speech rate multiplier
+    tts_format: str = "mp3"            # Output format: "mp3" or "wav"
+
     # Logging
     log_level: str = "INFO"
 

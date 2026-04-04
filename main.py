@@ -305,6 +305,21 @@ def main():
         metavar="YYYY-MM-DD",
         help="Date to look back from for --compile-digest (default: last 24 hours)",
     )
+    parser.add_argument(
+        "--with-audio",
+        action="store_true",
+        help="Also generate audio when compiling digest (use with --compile-digest)",
+    )
+    parser.add_argument(
+        "--audio-digest",
+        action="store_true",
+        help="Generate audio from the most recent briefing digest",
+    )
+    parser.add_argument(
+        "--audio-from",
+        metavar="PATH",
+        help="Generate audio from a specific briefing markdown file",
+    )
 
     args = parser.parse_args()
 
@@ -366,7 +381,13 @@ def main():
         return
     if args.compile_digest:
         check_services()
-        _handle_compile_digest(args.compile_since)
+        briefing_path = _handle_compile_digest(args.compile_since)
+        if args.with_audio and briefing_path:
+            _handle_audio_digest(briefing_path)
+        return
+    if args.audio_digest or args.audio_from:
+        check_services()
+        _handle_audio_digest(args.audio_from)
         return
 
     check_services()
@@ -693,7 +714,8 @@ def _handle_digest_eval():
             console.print(f"  [dim]-[/dim] {s}")
 
 
-def _handle_compile_digest(since: str | None):
+def _handle_compile_digest(since: str | None) -> str | None:
+    """Compile digest and return the briefing path (for --with-audio chaining)."""
     from agent.compile_digest import run_compile_digest
 
     since_label = since or "last 24 hours"
@@ -703,7 +725,7 @@ def _handle_compile_digest(since: str | None):
 
     if result["articles_compiled"] == 0:
         console.print("[dim]No approved digest items found for this period.[/dim]")
-        return
+        return None
 
     console.print(Panel(
         f"Articles compiled: {result['articles_compiled']}\n"
@@ -711,6 +733,36 @@ def _handle_compile_digest(since: str | None):
         f"Deep dive: {result['deep_path']}\n"
         f"Briefing: {result['briefing_path']}",
         title="Daily Digest Complete",
+        border_style="green",
+    ))
+    if result["errors"]:
+        for err in result["errors"]:
+            console.print(f"  [yellow]Warning:[/yellow] {err}")
+
+    return result.get("briefing_path") or None
+
+
+def _handle_audio_digest(briefing_path: str | None):
+    from agent.audio_digest import run_audio_digest
+
+    console.print("[bold green]Generating audio digest...[/bold green]")
+    with console.status("[bold green]Synthesizing speech...", spinner="dots"):
+        result = run_audio_digest(briefing_path=briefing_path)
+
+    if not result["audio_path"]:
+        console.print("[dim]No audio generated.[/dim]")
+        if result["errors"]:
+            for err in result["errors"]:
+                console.print(f"  [yellow]Warning:[/yellow] {err}")
+        return
+
+    duration_min = result["duration_seconds"] / 60
+    console.print(Panel(
+        f"Audio saved to: {result['audio_path']}\n"
+        f"Duration: {duration_min:.1f} minutes\n"
+        f"Provider: {result['provider_used']}\n"
+        f"Characters: {result['char_count']:,}",
+        title="Audio Digest Complete",
         border_style="green",
     ))
     if result["errors"]:

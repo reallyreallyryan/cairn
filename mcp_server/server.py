@@ -489,6 +489,38 @@ def compile_digest(since: str | None = None) -> str:
         return f"Error: {e}"
 
 
+@mcp.tool(annotations={"readOnlyHint": False})
+def audio_digest(briefing_path: str | None = None) -> str:
+    """Generate an audio version of the briefing digest for listening.
+
+    Converts the most recent briefing markdown into a natural-sounding
+    audio file using text-to-speech (Kokoro local or OpenAI fallback).
+
+    Args:
+        briefing_path: Path to a specific briefing file. Default: today's briefing.
+    """
+    logger.info("MCP audio_digest: briefing_path=%s", briefing_path)
+    try:
+        from agent.audio_digest import run_audio_digest
+
+        result = run_audio_digest(briefing_path=briefing_path)
+        if not result["audio_path"]:
+            errors = "; ".join(result["errors"]) if result["errors"] else "Unknown error"
+            return f"No audio generated. Errors: {errors}"
+
+        duration_min = result["duration_seconds"] / 60
+        return (
+            f"Audio digest generated.\n"
+            f"Path: {result['audio_path']}\n"
+            f"Duration: {duration_min:.1f} minutes\n"
+            f"Provider: {result['provider_used']}\n"
+            f"Characters: {result['char_count']:,}"
+        )
+    except Exception as e:
+        logger.error("audio_digest error: %s", e)
+        return f"Error: {e}"
+
+
 # ---------------------------------------------------------------------------
 # Health endpoint
 # ---------------------------------------------------------------------------

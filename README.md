@@ -14,7 +14,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
 
 - **4-Tier Model Routing with Budget Caps** — YAML-driven rules route tasks to the cheapest capable model (Qwen 3 8B → Qwen 3 32B → Claude Sonnet → Claude Extended). Daily spend tracking auto-downgrades to local models when you hit your budget. No LiteLLM dependency — just a simple, readable routing config.
 
-- **Daily Research Digest Pipeline** — A recurring daemon task scrapes configurable news sources, pre-filters items by embedding similarity against your SCMS project memories, reranks with a cross-encoder (cairn-rank), then summarizes with a local 32B model. Three scoring layers — embedding similarity, cross-encoder relevance, and LLM scoring — are tracked against human judgment in an evaluation pipeline. Approved items become permanent memories, improving future filtering — a feedback loop. Runs for ~$0.03/month.
+- **Daily Research Digest Pipeline** — A recurring daemon task scrapes configurable news sources, pre-filters items by embedding similarity against your SCMS project memories, reranks with a cross-encoder (cairn-rank), then summarizes with a local 32B model. Three scoring layers — embedding similarity, cross-encoder relevance, and LLM scoring — are tracked against human judgment in an evaluation pipeline. Approved items become permanent memories, improving future filtering — a feedback loop. Approved items compile into readable documents and optionally generate a narrated audio digest via local TTS (Kokoro) for listening on the go. Runs for ~$0.03/month.
 
 - **MCP Server with OAuth 2.1** — Your agent's memory and task queue are accessible from claude.ai, Claude Desktop, Claude Code, and mobile via a Railway-deployed MCP server with full OAuth 2.1 (DCR + PKCE). One of the few Python FastMCP + OAuth reference implementations available.
 
@@ -62,7 +62,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
                ┌──────────────────────────────────────────┐
                │  MCP Server (Railway)                     │
                │  FastMCP + OAuth 2.1 (DCR + PKCE)        │
-               │  16 tools · claude.ai / Desktop / mobile  │
+               │  18 tools · claude.ai / Desktop / mobile  │
                └──────────────────────────────────────────┘
 ```
 
@@ -74,6 +74,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
 - [uv](https://docs.astral.sh/uv/) package manager
 - [Ollama](https://ollama.ai/) for local LLM inference
 - [Docker](https://www.docker.com/) (recommended for code execution; restricted subprocess fallback available with `--allow-subprocess`)
+- [ffmpeg](https://ffmpeg.org/) (optional — required for audio digest MP3 export; `brew install ffmpeg` on macOS)
 - A [Supabase](https://supabase.com/) project (free tier works)
 
 ### Setup
@@ -128,6 +129,9 @@ python main.py --digest-status       # Check last run stats
 python main.py --digest-eval         # Run evaluation report on approval/rejection history
 python main.py --compile-digest      # Compile approved items into deep-dive + briefing docs
 python main.py --compile-digest --compile-since 2026-03-21  # Filter by date
+python main.py --compile-digest --with-audio  # Compile + generate audio narration
+python main.py --audio-digest        # Generate audio from today's briefing
+python main.py --audio-from ~/Documents/cairn/digests/2026-04-04_digest_briefing.md  # Specific file
 
 # Task queue & daemon
 python main.py --queue "Research MCP best practices" --priority 2
@@ -156,6 +160,7 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 | 7 | Digest Hardening | Few-shot calibration from approval history, digest dedup on ingest, evaluation pipeline with threshold analysis, digest sources expanded to 16, digest_eval MCP tool |
 | 8 | Security + Reranking | gitleaks pre-commit hook, cairn-rank cross-encoder integration into digest pipeline, three-layer scoring eval |
 | 8b | Digest Compiler | Compile approved digest items into deep-dive and briefing documents with full article fetching and LLM summarization |
+| 8c | Audio Digest | Text-to-speech narration of briefing digests via Kokoro TTS (local, free) with OpenAI TTS fallback for listening on the go |
 
 ## Project Structure
 
@@ -175,6 +180,7 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 │   ├── digest.py         # Daily research digest orchestrator
 │   ├── evaluation.py     # Digest evaluation: metrics, thresholds, reports
 │   ├── compile_digest.py  # Digest compiler: article fetching + LLM summaries
+│   ├── audio_digest.py   # Audio digest: TTS narration (Kokoro local / OpenAI fallback)
 │   ├── notifications.py  # macOS + file log notifications
 │   └── tools/            # 16+ tools (web, files, code, SCMS, project, metatool)
 │       ├── web_search.py
@@ -190,7 +196,7 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 │       ├── metatool.py
 │       └── custom/       # Agent-created tools (after human approval)
 ├── mcp_server/           # FastMCP server for cloud access
-│   ├── server.py         # 16 MCP tools, OAuth 2.1
+│   ├── server.py         # 18 MCP tools, OAuth 2.1
 │   └── config.py
 ├── config/               # YAML configs
 │   ├── model_routing.yaml
@@ -209,7 +215,8 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 │   ├── test_digest_dedup.py
 │   ├── test_digest_fewshot.py
 │   ├── test_evaluation.py
-│   └── test_rerank.py
+│   ├── test_rerank.py
+│   └── test_audio_digest.py
 └── main.py               # CLI entry point
 ```
 
@@ -243,6 +250,8 @@ cairn is designed to be cheap to run daily:
 | Research / multi-step | Claude Sonnet (cloud) | ~$0.01/task |
 | Complex technical | Claude Sonnet extended | ~$0.03/task |
 | Daily digest (full run) | Local + embedding | ~$0.001/day |
+| Audio digest (Kokoro) | Local TTS (82M params) | $0.00 |
+| Audio digest (OpenAI fallback) | OpenAI TTS | ~$0.18/digest |
 | **Daily budget cap** | Configurable | Default $5.00 |
 
 The daily digest pipeline runs almost entirely on local models. The only cloud cost is embedding approved items via OpenAI text-embedding-3-small (~$0.03/month).
@@ -253,6 +262,7 @@ The daily digest pipeline runs almost entirely on local models. The only cloud c
 - [x] Evaluation pipeline using digest approval/rejection data
 - [x] Cross-encoder reranking via cairn-rank (three-layer scoring comparison)
 - [x] Security hardening (gitleaks pre-commit hook)
+- [x] Audio digest — TTS narration of briefing digests for listening on the go
 - [ ] Memory deduplication and aging
 - [ ] 24/7 daemon deployment on Railway
 - [ ] Multi-agent collaboration patterns

@@ -24,6 +24,7 @@ agent/                  # Core agent logic
   digest.py             # Daily research digest pipeline orchestrator
   evaluation.py         # Digest evaluation pipeline: approval/rejection metrics + threshold analysis
   compile_digest.py       # Digest compiler: fetches articles, LLM summaries, two output formats
+  audio_digest.py        # Audio digest: LLM script generation + TTS synthesis (Kokoro/OpenAI)
   notifications.py      # macOS osascript + file log notifications
   tools/
     __init__.py          # TOOL_REGISTRY dict, CATEGORY_TOOLS mapping, load_approved_custom_tools()
@@ -43,7 +44,7 @@ agent/                  # Core agent logic
 mcp_server/
   __init__.py
   config.py              # MCPSettings: mcp_base_url, mcp_host, mcp_port
-  server.py              # FastMCP server: 17 MCP tools, OAuth 2.1 via InMemoryOAuthProvider
+  server.py              # FastMCP server: 18 MCP tools, OAuth 2.1 via InMemoryOAuthProvider
 
 config/
   settings.py            # Pydantic BaseSettings, loads from .env
@@ -74,6 +75,7 @@ tests/
   test_evaluation.py      # Digest eval pipeline: parsing, metrics, bucketing, report
   test_rerank.py          # Cross-encoder reranking: scoring, graceful degradation
   test_compile_digest.py   # Digest compiler: fetching, summarization, document building
+  test_audio_digest.py     # Audio digest: script generation, TTS synthesis, assembly, pipeline
 
 main.py                  # CLI entry point (argparse), initial_state construction, graph invocation
 .pre-commit-config.yaml  # gitleaks secret scanning on every commit
@@ -184,7 +186,9 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 **Daily Digest Compiler**: `agent/compile_digest.py` compiles approved digest items into two readable documents. Fetches full article content via httpx + trafilatura, generates per-article summaries using local Qwen 32B in two styles: deep dive (150-300 words, technical depth) and briefing (100-200 words, accessible language). Saves both to the digests directory. Graceful degradation: unfetchable URLs fall back to snippet-based summaries.
 
-**CLI**: `--digest` (run manually), `--review-digest` (approve/reject items into SCMS), `--digest-status` (show recent runs), `--digest-eval` (run evaluation report), `--compile-digest` (compile approved items into deep-dive and briefing documents), `--compile-since YYYY-MM-DD` (date filter for `--compile-digest`).
+**Audio Digest**: `agent/audio_digest.py` generates a spoken-word audio file from the briefing digest for listening while driving or walking. `generate_audio_script()` uses Qwen 32B to convert briefing markdown into an audio-friendly script (strips URLs/metadata, adds spoken transitions between articles, expands acronyms). `synthesize_audio()` uses Kokoro TTS locally (82M params, CPU, free, Apache 2.0) with OpenAI TTS (~$0.18/digest) as a cloud fallback. `assemble_audio()` concatenates article chunks with 1.5s silence via pydub. Output: MP3 saved to digests directory. Graceful degradation: Kokoro → OpenAI → skip. Requires `ffmpeg` for MP3 encoding (falls back to WAV).
+
+**CLI**: `--digest` (run manually), `--review-digest` (approve/reject items into SCMS), `--digest-status` (show recent runs), `--digest-eval` (run evaluation report), `--compile-digest` (compile approved items into deep-dive and briefing documents), `--compile-since YYYY-MM-DD` (date filter for `--compile-digest`), `--audio-digest` (generate audio from latest briefing), `--audio-from PATH` (generate from specific file), `--compile-digest --with-audio` (compile then generate audio).
 
 **Daemon**: Tasks with "digest" keywords bypass the graph and call `run_digest()` directly. Set up via `--queue "Run daily digest" --recurring "0 6 * * *"`.
 
@@ -219,6 +223,7 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 - `agent_status` — queue counts and daily spend
 - `review_digest`, `digest_status` — digest pipeline review and monitoring
 - `compile_digest` — compile approved items into deep-dive and briefing documents
+- `audio_digest` — generate TTS audio from briefing digest (Kokoro local / OpenAI fallback)
 - `digest_eval` — digest evaluation metrics report (approval rates, threshold analysis)
 
 **Auth**: OAuth 2.1 via `InMemoryOAuthProvider` with Dynamic Client Registration (DCR) and PKCE. Enabled when `MCP_BASE_URL` is set; no auth for local dev. Clients re-authenticate after Railway deploys (handled automatically by the OAuth flow).
@@ -231,7 +236,7 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 ## Dependencies
 
-LangGraph + LangChain ecosystem for agent orchestration. Supabase for persistence. Docker SDK for sandboxing. FastMCP for MCP server + OAuth. DuckDuckGo, trafilatura, arxiv for data sources. Rich for terminal UI. Croniter for recurring task scheduling. cairn-rank for cross-encoder reranking in the digest pipeline.
+LangGraph + LangChain ecosystem for agent orchestration. Supabase for persistence. Docker SDK for sandboxing. FastMCP for MCP server + OAuth. DuckDuckGo, trafilatura, arxiv for data sources. Rich for terminal UI. Croniter for recurring task scheduling. cairn-rank for cross-encoder reranking in the digest pipeline. Kokoro, soundfile, pydub for TTS audio digest generation (requires ffmpeg for MP3 export).
 
 ## Testing
 
@@ -254,5 +259,6 @@ Test files:
 - `tests/test_evaluation.py` — Eval pipeline: parsing, metrics, buckets, thresholds, report generation
 - `tests/test_rerank.py` — Cross-encoder reranking: scoring, max-across-projects, graceful degradation
 - `tests/test_compile_digest.py` — Digest compiler: fetching, summarization, document building
+- `tests/test_audio_digest.py` — Audio digest: script generation, TTS synthesis, assembly, pipeline
 
 Tests use mocked SCMS client — no Supabase, Docker, or API keys needed. Dev dependencies: `uv sync --group dev`.
