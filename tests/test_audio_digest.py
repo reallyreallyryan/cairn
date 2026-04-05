@@ -7,13 +7,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agent.audio_digest import (
+    _clean_script,
     _count_articles,
     _count_sources,
+    _fetch_project_context,
     _strip_markdown_fallback,
     assemble_audio,
     generate_audio_script,
     get_audio_duration,
     run_audio_digest,
+    split_qa_by_speaker,
     split_script_into_chunks,
     synthesize_audio,
 )
@@ -69,6 +72,37 @@ techniques.
 That wraps up today's cairn digest. 2 articles from 2 sources. Happy listening.
 """
 
+QA_SAMPLE_SCRIPT = """\
+Host: Welcome to your cairn digest for 2026-04-04. We've got 2 articles \
+from 2 sources. Let's dig in.
+
+Host: What's this first one about?
+
+Expert: From the Anthropic Blog, we have New Agent Framework. This article \
+covers a new framework for building AI agents. The approach uses LLM-based \
+planning with tool execution.
+
+Host: How might this apply to what we're working on?
+
+Expert: This is directly relevant to cairn because it uses a similar \
+plan-then-act architecture. We could adopt their tool binding approach.
+
+Host: Moving on. What's next?
+
+Host: What's this one about?
+
+Expert: From arXiv, Scaling Vector Search. A paper on scaling vector \
+similarity search to billions of vectors using approximate nearest neighbor \
+techniques.
+
+Host: That's 2 articles today. Some good stuff in there. Until next time.
+"""
+
+SAMPLE_PROJECT_CONTEXT = """\
+Active projects:
+- cairn: AI agent with LangGraph, Supabase, pgvector. Goals: expand tool library.
+- ridgeline: Flowise-based audit tool. Goals: build MVP."""
+
 # Minimal WAV header (44 bytes) + 1 second of silence at 24kHz 16-bit mono
 WAV_HEADER = b"RIFF" + b"\x00" * 40
 
@@ -120,6 +154,87 @@ class TestStripMarkdownFallback:
         )
         assert "snippet" not in result
         assert "Summary text." in result
+
+
+# ---------------------------------------------------------------------------
+# _clean_script
+# ---------------------------------------------------------------------------
+
+class TestCleanScript:
+    def test_strips_bold(self):
+        assert _clean_script("This is **bold** text") == "This is bold text"
+
+    def test_strips_italic(self):
+        assert _clean_script("This is *italic* text") == "This is italic text"
+
+    def test_strips_triple_asterisks(self):
+        assert _clean_script("***important***") == "important"
+
+    def test_strips_links(self):
+        result = _clean_script("See [this article](https://example.com)")
+        assert "this article" in result
+        assert "https://example.com" not in result
+
+    def test_strips_standalone_urls(self):
+        result = _clean_script("Visit https://example.com today")
+        assert "https://example.com" not in result
+
+    def test_strips_headers(self):
+        result = _clean_script("## Section Title\nContent")
+        assert "##" not in result
+        assert "Section Title" in result
+
+    def test_preserves_plain_text(self):
+        text = "This is a normal sentence with no markdown."
+        assert _clean_script(text) == text
+
+
+# ---------------------------------------------------------------------------
+# split_qa_by_speaker
+# ---------------------------------------------------------------------------
+
+class TestSplitQaBySpeaker:
+    @patch("agent.audio_digest.settings")
+    def test_splits_host_and_expert(self, mock_settings):
+        mock_settings.tts_voice_host = "am_michael"
+        mock_settings.tts_voice_expert = "af_bella"
+
+        script = "Host: Welcome to the show.\n\nExpert: Thanks for having me."
+        result = split_qa_by_speaker(script)
+
+        assert len(result) == 2
+        assert result[0] == ("am_michael", "Welcome to the show.")
+        assert result[1] == ("af_bella", "Thanks for having me.")
+
+    @patch("agent.audio_digest.settings")
+    def test_strips_speaker_labels(self, mock_settings):
+        mock_settings.tts_voice_host = "am_michael"
+        mock_settings.tts_voice_expert = "af_bella"
+
+        script = "Host: Hello there.\n\nExpert: Hi back."
+        result = split_qa_by_speaker(script)
+
+        for _, text in result:
+            assert not text.startswith("Host:")
+            assert not text.startswith("Expert:")
+
+    @patch("agent.audio_digest.settings")
+    def test_unlabeled_preamble_uses_host_voice(self, mock_settings):
+        mock_settings.tts_voice_host = "am_michael"
+        mock_settings.tts_voice_expert = "af_bella"
+
+        script = "Welcome everyone.\n\nHost: Let's start."
+        result = split_qa_by_speaker(script)
+
+        assert result[0][0] == "am_michael"  # preamble gets host voice
+
+    @patch("agent.audio_digest.settings")
+    def test_empty_script(self, mock_settings):
+        mock_settings.tts_voice_host = "am_michael"
+        mock_settings.tts_voice_expert = "af_bella"
+
+        result = split_qa_by_speaker("")
+        assert len(result) == 1  # fallback
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +304,93 @@ class TestGenerateAudioScript:
 
         # Should use regex fallback since LLM output was < 100 chars
         assert len(result) > 100
+
+    @patch("agent.audio_digest.settings")
+    @patch("agent.utils.get_llm")
+    def test_qa_style_produces_host_expert(self, mock_get_llm, mock_settings):
+        mock_settings.audio_style = "qa"
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock(content=QA_SAMPLE_SCRIPT)
+        mock_get_llm.return_value = mock_llm
+
+        result = generate_audio_script(
+            SAMPLE_BRIEFING, "2026-04-04", 2, 2,
+            project_context=SAMPLE_PROJECT_CONTEXT,
+        )
+
+        assert "Host:" in result
+        assert "Expert:" in result
+
+    @patch("agent.audio_digest.settings")
+    @patch("agent.utils.get_llm")
+    def test_qa_style_without_project_context(self, mock_get_llm, mock_settings):
+        mock_settings.audio_style = "qa"
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock(content=QA_SAMPLE_SCRIPT)
+        mock_get_llm.return_value = mock_llm
+
+        result = generate_audio_script(
+            SAMPLE_BRIEFING, "2026-04-04", 2, 2,
+            project_context="",
+        )
+
+        # Should still produce valid Q&A even without project context
+        assert "Host:" in result
+
+    @patch("agent.audio_digest.settings")
+    @patch("agent.utils.get_llm")
+    def test_monologue_style_uses_original_prompt(self, mock_get_llm, mock_settings):
+        mock_settings.audio_style = "monologue"
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock(content=SAMPLE_SCRIPT)
+        mock_get_llm.return_value = mock_llm
+
+        result = generate_audio_script(
+            SAMPLE_BRIEFING, "2026-04-04", 2, 2,
+            project_context=SAMPLE_PROJECT_CONTEXT,
+        )
+
+        # Monologue style should NOT have Host:/Expert: labels
+        assert "Host:" not in result
+        assert "Happy listening" in result
+
+
+# ---------------------------------------------------------------------------
+# _fetch_project_context
+# ---------------------------------------------------------------------------
+
+class TestFetchProjectContext:
+    @patch("scms.client.SCMSClient")
+    def test_returns_formatted_context(self, MockClient):
+        mock_client = MagicMock()
+        mock_client.list_projects.return_value = [
+            {"name": "cairn", "description": "AI agent", "metadata": {"goals": "expand tools"}},
+            {"name": "ridgeline", "description": "Audit tool", "metadata": {"stack": "Flowise"}},
+        ]
+        MockClient.return_value = mock_client
+
+        result = _fetch_project_context()
+
+        assert "Active projects:" in result
+        assert "cairn" in result
+        assert "ridgeline" in result
+        assert "expand tools" in result
+
+    @patch("scms.client.SCMSClient")
+    def test_returns_empty_on_no_projects(self, MockClient):
+        mock_client = MagicMock()
+        mock_client.list_projects.return_value = []
+        MockClient.return_value = mock_client
+
+        result = _fetch_project_context()
+        assert result == ""
+
+    @patch("scms.client.SCMSClient")
+    def test_returns_empty_on_error(self, MockClient):
+        MockClient.side_effect = ConnectionError("Supabase down")
+
+        result = _fetch_project_context()
+        assert result == ""
 
 
 # ---------------------------------------------------------------------------

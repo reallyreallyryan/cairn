@@ -64,10 +64,13 @@ class Settings(BaseSettings):
 
     # Audio digest (TTS)
     tts_provider: str = "auto"         # "auto" (kokoro→openai), "kokoro", "openai", "off"
-    tts_voice: str = "af_heart"        # Kokoro voice (American English)
+    tts_voice: str = "af_heart"        # Kokoro voice for monologue
+    tts_voice_host: str = "am_michael" # Kokoro voice for Q&A host (male)
+    tts_voice_expert: str = "af_bella" # Kokoro voice for Q&A expert (female)
     tts_openai_voice: str = "nova"     # OpenAI TTS fallback voice
     tts_speed: float = 1.0             # Speech rate multiplier
     tts_format: str = "mp3"            # Output format: "mp3" or "wav"
+    audio_style: str = "qa"            # "qa" (host/expert conversation) or "monologue"
 
     # Logging
     log_level: str = "INFO"

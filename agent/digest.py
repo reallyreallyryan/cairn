@@ -293,8 +293,15 @@ def summarize_and_score(
 
     few_shot = _build_few_shot_context()
     prompt = (
-        "Score the relevance of these items for someone building AI agents, "
-        "working on personal productivity tools, and tracking AI industry news. "
+        "Score the relevance of these items for a developer who builds AI agents, "
+        "personal productivity tools, and LLM-powered workflows. "
+        "Score HIGH for: agent architectures, LLM tooling, tool-use patterns, "
+        "RAG/retrieval techniques, memory systems, eval methods, developer workflows, "
+        "and AI product launches that affect how you build things. "
+        "Score LOW for: purely academic benchmarks, robotics/hardware, "
+        "computer vision, speech/audio models, niche subfields (biology, chemistry, physics), "
+        "and enterprise sales/marketing content — unless they directly relate to "
+        "agent design or LLM developer tooling. "
         f"Active projects: {', '.join(projects)}.\n\n"
         f"{few_shot}"
         f"Items:\n{items_text}\n\n"

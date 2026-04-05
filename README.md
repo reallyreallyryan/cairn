@@ -14,7 +14,7 @@ Most LangGraph agent repos are single-feature demos — a memory example here, a
 
 - **4-Tier Model Routing with Budget Caps** — YAML-driven rules route tasks to the cheapest capable model (Qwen 3 8B → Qwen 3 32B → Claude Sonnet → Claude Extended). Daily spend tracking auto-downgrades to local models when you hit your budget. No LiteLLM dependency — just a simple, readable routing config.
 
-- **Daily Research Digest Pipeline** — A recurring daemon task scrapes configurable news sources, pre-filters items by embedding similarity against your SCMS project memories, reranks with a cross-encoder (cairn-rank), then summarizes with a local 32B model. Three scoring layers — embedding similarity, cross-encoder relevance, and LLM scoring — are tracked against human judgment in an evaluation pipeline. Approved items become permanent memories, improving future filtering — a feedback loop. Approved items compile into readable documents and optionally generate a narrated audio digest via local TTS (Kokoro) for listening on the go. Runs for ~$0.03/month.
+- **Daily Research Digest Pipeline** — A recurring daemon task scrapes configurable news sources, pre-filters items by embedding similarity against your SCMS project memories, reranks with a cross-encoder (cairn-rank), then summarizes with a local 32B model. Three scoring layers — embedding similarity, cross-encoder relevance, and LLM scoring — are tracked against human judgment in an evaluation pipeline. Approved items become permanent memories, improving future filtering — a feedback loop. Approved items compile into readable documents and optionally generate a narrated audio digest via local TTS (Kokoro) for listening on the go. A Jupyter notebook measures each layer's precision/recall against human judgments, surfacing failure modes that feed back into prompt tuning. Runs for ~$0.03/month.
 
 - **MCP Server with OAuth 2.1** — Your agent's memory and task queue are accessible from claude.ai, Claude Desktop, Claude Code, and mobile via a Railway-deployed MCP server with full OAuth 2.1 (DCR + PKCE). One of the few Python FastMCP + OAuth reference implementations available.
 
@@ -145,7 +145,7 @@ python main.py --approve-tool <id>   # Approve for production use
 
 ## Sprint History
 
-cairn was built incrementally across 8 sprints. Each sprint added a distinct capability layer, and each sprint brief was handed to Claude Code for implementation.
+cairn was built incrementally across 9 sprints. Each sprint added a distinct capability layer, and each sprint brief was handed to Claude Code for implementation.
 
 | Sprint | Focus | What Was Added |
 |--------|-------|----------------|
@@ -161,6 +161,7 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 | 8 | Security + Reranking | gitleaks pre-commit hook, cairn-rank cross-encoder integration into digest pipeline, three-layer scoring eval |
 | 8b | Digest Compiler | Compile approved digest items into deep-dive and briefing documents with full article fetching and LLM summarization |
 | 8c | Audio Digest | Text-to-speech narration of briefing digests via Kokoro TTS (local, free) with OpenAI TTS fallback for listening on the go |
+| 9 | Evals Deep Dive | Jupyter notebook for baseline scoring analysis: per-threshold precision/recall/F1, layer correlation, failure mode extraction, sharpened LLM relevance prompt |
 
 ## Project Structure
 
@@ -209,6 +210,8 @@ cairn was built incrementally across 8 sprints. Each sprint added a distinct cap
 ├── sandbox/              # Docker sandbox
 │   ├── Dockerfile
 │   └── manager.py        # Container lifecycle, code injection, cleanup
+├── notebooks/            # Analysis notebooks (dev deps: pandas, matplotlib, jupyterlab)
+│   └── sprint9_eval_baseline.ipynb  # Digest scoring baseline analysis
 ├── tests/                # Integration tests (pytest)
 │   ├── test_project_crud.py
 │   ├── test_metatool_loading.py
@@ -263,6 +266,7 @@ The daily digest pipeline runs almost entirely on local models. The only cloud c
 - [x] Cross-encoder reranking via cairn-rank (three-layer scoring comparison)
 - [x] Security hardening (gitleaks pre-commit hook)
 - [x] Audio digest — TTS narration of briefing digests for listening on the go
+- [x] Evals baseline — per-layer precision/recall analysis, failure modes, prompt sharpening
 - [ ] Memory deduplication and aging
 - [ ] 24/7 daemon deployment on Railway
 - [ ] Multi-agent collaboration patterns

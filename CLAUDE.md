@@ -77,6 +77,9 @@ tests/
   test_compile_digest.py   # Digest compiler: fetching, summarization, document building
   test_audio_digest.py     # Audio digest: script generation, TTS synthesis, assembly, pipeline
 
+notebooks/
+  sprint9_eval_baseline.ipynb  # Digest scoring baseline: precision/recall, correlation, failure modes
+
 main.py                  # CLI entry point (argparse), initial_state construction, graph invocation
 .pre-commit-config.yaml  # gitleaks secret scanning on every commit
 Dockerfile.mcp           # python:3.12-slim, uv-managed deps, runs mcp_server.server
@@ -182,7 +185,9 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 **Dedup on Ingest**: `queue_for_review()` fetches existing `_digest_review` items and skips duplicates by URL (primary) or title (fallback), preventing previously reviewed items from reappearing.
 
-**Evaluation Pipeline**: `agent/evaluation.py` mines approval/rejection history from `task_queue` to compute metrics: approval rates by relevance/embedding/cross-encoder score buckets, per-source breakdown, F1-optimal thresholds, and weekly trends. Generates a markdown report saved to the digests directory.
+**Evaluation Pipeline**: `agent/evaluation.py` mines approval/rejection history from `task_queue` to compute metrics: approval rates by relevance/embedding/cross-encoder score buckets, per-source breakdown, F1-optimal thresholds, and weekly trends. Generates a markdown report saved to the digests directory. The Sprint 9 notebook (`notebooks/sprint9_eval_baseline.ipynb`) extends this with per-threshold precision/recall/F1 tables, precision-recall curves, Pearson/Spearman correlation matrices, failure mode extraction (highest-scoring rejections, lowest-scoring approvals), and layer disagreement analysis. Requires dev deps (`uv sync --group dev`): pandas, matplotlib, jupyterlab.
+
+**LLM Relevance Prompt**: The scoring prompt in `summarize_and_score()` (`agent/digest.py:295`) includes explicit HIGH/LOW guidance — score HIGH for agent architectures, LLM tooling, RAG, memory systems, eval methods, developer workflows; score LOW for academic benchmarks, robotics/hardware, computer vision, niche subfields. This was sharpened in Sprint 9 based on failure mode analysis from the eval notebook.
 
 **Daily Digest Compiler**: `agent/compile_digest.py` compiles approved digest items into two readable documents. Fetches full article content via httpx + trafilatura, generates per-article summaries using local Qwen 32B in two styles: deep dive (150-300 words, technical depth) and briefing (100-200 words, accessible language). Saves both to the digests directory. Graceful degradation: unfetchable URLs fall back to snippet-based summaries.
 
@@ -236,7 +241,7 @@ At startup, `load_approved_custom_tools()` dynamically imports approved metatool
 
 ## Dependencies
 
-LangGraph + LangChain ecosystem for agent orchestration. Supabase for persistence. Docker SDK for sandboxing. FastMCP for MCP server + OAuth. DuckDuckGo, trafilatura, arxiv for data sources. Rich for terminal UI. Croniter for recurring task scheduling. cairn-rank for cross-encoder reranking in the digest pipeline. Kokoro, soundfile, pydub for TTS audio digest generation (requires ffmpeg for MP3 export).
+LangGraph + LangChain ecosystem for agent orchestration. Supabase for persistence. Docker SDK for sandboxing. FastMCP for MCP server + OAuth. DuckDuckGo, trafilatura, arxiv for data sources. Rich for terminal UI. Croniter for recurring task scheduling. cairn-rank for cross-encoder reranking in the digest pipeline. Kokoro, soundfile, pydub for TTS audio digest generation (requires ffmpeg for MP3 export). Dev group: pandas, matplotlib, jupyterlab for eval notebooks (`uv sync --group dev`).
 
 ## Testing
 
