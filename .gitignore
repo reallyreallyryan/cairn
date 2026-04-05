@@ -39,5 +39,8 @@ agent/tools/custom/*.py
 .coverage
 htmlcov/
 
+# Jupyter
+.ipynb_checkpoints/
+
 # Personal docs (not for public repo)
 USER_SUMMARY.md
