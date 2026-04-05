@@ -78,13 +78,17 @@ and an "Expert" for listening while driving or walking. Follow these rules stric
 3. For each article, Host asks 2-3 questions:
    - First question introduces the article: "Host: What's this next one about?"
    - If project context is provided below, a second question connects to projects: \
-"Host: How might this apply to what we're working on?" — Expert should reference \
-specific projects by name in the answer.
+"Host: How does this connect to any of our projects?" — Expert should name a \
+specific project (vary which one across the conversation).
    - For especially interesting articles, an optional third question: \
 "Host: What's the key takeaway here?"
 4. Expert answers using the article content. When project context is available, \
-Expert specifically references relevant projects: "Expert: This is directly \
-relevant to cairn because..." or "For the ridgeline project, this could mean..."
+Expert MUST reference at least one project by name in EVERY answer — rotate \
+through ALL the listed projects across the conversation, not just the most \
+obvious one. Make creative connections: a paper about vector search relates to \
+any project with a database, a new LLM technique relates to any project using \
+AI. Example patterns: "This could benefit [project] because...", "For [project], \
+this means...", "I could see applying this to [project] where..."
 5. Between articles, Host provides a brief natural transition.
 6. End with: "Host: That's {article_count} articles today. Some good stuff in \
 there. Until next time."

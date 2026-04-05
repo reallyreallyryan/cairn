@@ -162,6 +162,7 @@ cairn was built incrementally across 9 sprints. Each sprint added a distinct cap
 | 8b | Digest Compiler | Compile approved digest items into deep-dive and briefing documents with full article fetching and LLM summarization |
 | 8c | Audio Digest | Text-to-speech narration of briefing digests via Kokoro TTS (local, free) with OpenAI TTS fallback for listening on the go |
 | 9 | Evals Deep Dive | Jupyter notebook for baseline scoring analysis: per-threshold precision/recall/F1, layer correlation, failure mode extraction, sharpened LLM relevance prompt |
+| 10 | Q&A Audio Digest | Host/Expert conversation style with SCMS project context, dual Kokoro voices (male host, female expert), markdown artifact cleanup |
 
 ## Project Structure
 
